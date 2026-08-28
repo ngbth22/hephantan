@@ -24,11 +24,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import config
 import playfair
 import protocol
-from network import SenderThread
-
-DEFAULT_PORT = 5000
+from network import SenderThread, validate_endpoint
 
 
 class SenderWindow(QMainWindow):
@@ -37,7 +36,7 @@ class SenderWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VM1 - Playfair Sender")
-        self.resize(760, 640)
+        self.resize(*config.SENDER_WINDOW_SIZE)
         self._sender_thread: SenderThread | None = None
         self._build_ui()
 
@@ -70,7 +69,7 @@ class SenderWindow(QMainWindow):
         # --- Nhom ket qua ma hoa ---
         result_group = QGroupBox("Kết quả mã hóa")
         result_layout = QGridLayout(result_group)
-        mono = QFont("Consolas", 11)
+        mono = QFont(config.MONO_FONT_FAMILY, config.MONO_FONT_SIZE)
 
         result_layout.addWidget(QLabel("Ma trận Playfair 5×5:"), 0, 0, Qt.AlignTop)
         self.matrix_view = QPlainTextEdit()
@@ -93,13 +92,13 @@ class SenderWindow(QMainWindow):
         conn_layout = QHBoxLayout(conn_group)
 
         conn_layout.addWidget(QLabel("IP Receiver:"))
-        self.host_edit = QLineEdit("192.168.1.2")
+        self.host_edit = QLineEdit(config.DEFAULT_RECEIVER_HOST)
         conn_layout.addWidget(self.host_edit)
 
         conn_layout.addWidget(QLabel("Port:"))
         self.port_spin = QSpinBox()
-        self.port_spin.setRange(1, 65535)
-        self.port_spin.setValue(DEFAULT_PORT)
+        self.port_spin.setRange(config.PORT_MIN, config.PORT_MAX)
+        self.port_spin.setValue(config.DEFAULT_PORT)
         conn_layout.addWidget(self.port_spin)
 
         self.send_button = QPushButton("Gửi ciphertext")
@@ -159,9 +158,10 @@ class SenderWindow(QMainWindow):
             QMessageBox.warning(self, "Chưa có ciphertext",
                                 "Hãy bấm 'Tạo ma trận & Mã hóa' trước khi gửi.")
             return
-        if not host:
-            QMessageBox.warning(self, "Thiếu IP",
-                                "Hãy nhập địa chỉ IP của Receiver (VM2).")
+        try:
+            validate_endpoint(host, port)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Địa chỉ không hợp lệ", str(exc))
             return
         if self._sender_thread and self._sender_thread.isRunning():
             QMessageBox.information(self, "Đang gửi",

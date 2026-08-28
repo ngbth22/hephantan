@@ -11,9 +11,7 @@ Quy uoc:
 
 from __future__ import annotations
 
-ALPHABET = "ABCDEFGHIKLMNOPQRSTUVWXYZ"  # khong co J
-FILLER = "X"
-MATRIX_SIZE = 5
+from config import ALPHABET, FILLER, MATRIX_SIZE
 
 
 def normalize_text(text: str) -> str:

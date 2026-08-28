@@ -26,13 +26,15 @@ hephantan/
 │   ├── gui.py         # giao diện PySide6
 │   ├── playfair.py    # thuật toán mã hóa/giải mã Playfair
 │   ├── network.py     # TCP Client (chạy trên QThread)
-│   └── protocol.py    # đóng gói / giải gói tin JSON
+│   ├── protocol.py    # đóng gói / giải gói tin JSON
+│   └── config.py      # tham số cấu hình tập trung
 ├── receiver/          # VM2 - máy nhận
 │   ├── main.py
 │   ├── gui.py
 │   ├── playfair.py
 │   ├── network.py     # TCP Server (chạy trên QThread)
-│   └── protocol.py
+│   ├── protocol.py
+│   └── config.py
 ├── requirements.txt
 └── README.md
 ```

@@ -19,10 +19,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-MESSAGE_TYPE = "playfair_message"
-PROTOCOL_VERSION = 1
-ENCODING = "utf-8"
-DELIMITER = b"\n"
+from config import DELIMITER, ENCODING, MESSAGE_TYPE, PROTOCOL_VERSION
 
 
 def pack_message(key: str, ciphertext: str) -> bytes:

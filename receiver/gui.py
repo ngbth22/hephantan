@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -23,11 +24,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import config
 import playfair
 import protocol
-from network import ReceiverServer
-
-DEFAULT_PORT = 5000
+from network import ReceiverServer, validate_listen_endpoint
 
 
 class ReceiverWindow(QMainWindow):
@@ -36,7 +36,7 @@ class ReceiverWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VM2 - Playfair Receiver")
-        self.resize(760, 680)
+        self.resize(*config.RECEIVER_WINDOW_SIZE)
         self._server: ReceiverServer | None = None
         self._build_ui()
 
@@ -44,21 +44,21 @@ class ReceiverWindow(QMainWindow):
     def _build_ui(self) -> None:
         central = QWidget()
         root = QVBoxLayout(central)
-        mono = QFont("Consolas", 11)
+        mono = QFont(config.MONO_FONT_FAMILY, config.MONO_FONT_SIZE)
 
         # --- Nhom dieu khien server ---
         server_group = QGroupBox("TCP Server")
         server_layout = QHBoxLayout(server_group)
 
         server_layout.addWidget(QLabel("IP lắng nghe:"))
-        self.host_edit = QLineEdit("0.0.0.0")
+        self.host_edit = QLineEdit(config.DEFAULT_LISTEN_HOST)
         self.host_edit.setToolTip("0.0.0.0 = lắng nghe trên mọi card mạng")
         server_layout.addWidget(self.host_edit)
 
         server_layout.addWidget(QLabel("Port:"))
         self.port_spin = QSpinBox()
-        self.port_spin.setRange(1, 65535)
-        self.port_spin.setValue(DEFAULT_PORT)
+        self.port_spin.setRange(config.PORT_MIN, config.PORT_MAX)
+        self.port_spin.setValue(config.DEFAULT_PORT)
         server_layout.addWidget(self.port_spin)
 
         self.start_button = QPushButton("Khởi động Server")
@@ -120,8 +120,14 @@ class ReceiverWindow(QMainWindow):
 
     # -------------------------------------------------------- Handlers
     def on_start_server(self) -> None:
-        host = self.host_edit.text().strip() or "0.0.0.0"
+        host = self.host_edit.text().strip() or config.DEFAULT_LISTEN_HOST
         port = self.port_spin.value()
+
+        try:
+            validate_listen_endpoint(host, port)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Cấu hình không hợp lệ", str(exc))
+            return
 
         self._server = ReceiverServer(host, port, parent=self)
         self._server.log.connect(self._log)
@@ -196,5 +202,5 @@ class ReceiverWindow(QMainWindow):
         """Dung server truoc khi dong cua so."""
         if self._server and self._server.isRunning():
             self._server.stop()
-            self._server.wait(2000)
+            self._server.wait(config.SERVER_STOP_WAIT_MS)
         super().closeEvent(event)
