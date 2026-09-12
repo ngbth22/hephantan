@@ -6,9 +6,9 @@
 
 ## ⚡ Khởi động nhanh (Quick Start)
 
-### 1. Cài đặt môi trường
+### 1. Cài đặt môi trường (Bắt buộc trên máy ảo mới clone)
 ```powershell
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 2. Chạy ứng dụng Demo Truyền nhận (GUI)
