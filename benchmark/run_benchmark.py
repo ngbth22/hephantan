@@ -56,7 +56,13 @@ def run_full_pipeline(
     seed: int = 42,
     is_local: bool | None = None,
 ) -> None:
-    """Thuc thi toan bo quy trinh benchmark."""
+    # Chuan hoa results_dir: Neu nguoi dung dang dung trong thu muc benchmark va de mac dinh "benchmark/results"
+    # thi chuyen thanh "results" de tranh tao long "benchmark/benchmark/results".
+    current_dir = os.path.abspath(os.getcwd())
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    if results_dir == "benchmark/results" and current_dir == script_dir:
+        results_dir = os.path.join(script_dir, "results")
+
     os.makedirs(results_dir, exist_ok=True)
     csv_file = os.path.join(results_dir, "benchmark_results.csv")
     charts_dir = os.path.join(results_dir, "charts")
