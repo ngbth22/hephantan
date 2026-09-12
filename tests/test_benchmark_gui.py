@@ -6,18 +6,20 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 # Bat buoc chay Qt o che do offscreen de test tren headless / CI
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
-BENCH_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "benchmark")
-if BENCH_DIR not in sys.path:
-    sys.path.insert(0, BENCH_DIR)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-import gui
+from benchmark import common, gui
 
 
 class TestBenchmarkGUI(unittest.TestCase):
@@ -159,6 +161,124 @@ class TestBenchmarkGUI(unittest.TestCase):
         finally:
             server_worker.stop()
             server_worker.wait(2000)
+
+    def test_clear_benchmark_results_function(self):
+        """Kiem tra ham common.clear_benchmark_results xoa dung file du lieu va anh bieu do."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            charts_dir = os.path.join(tmpdir, "charts")
+            os.makedirs(charts_dir, exist_ok=True)
+
+            # Tao cac file du lieu gia lap
+            csv_path = os.path.join(tmpdir, "benchmark_results.csv")
+            stat_path = os.path.join(tmpdir, "detailed_statistics.csv")
+            md_path = os.path.join(tmpdir, "summary_table.md")
+            chart1_path = os.path.join(charts_dir, "01_encryption_time.png")
+            chart2_path = os.path.join(charts_dir, "02_decryption_time.png")
+
+            for path in (csv_path, stat_path, md_path, chart1_path, chart2_path):
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write("test_content")
+
+            deleted, locked = common.clear_benchmark_results(tmpdir)
+            self.assertEqual(len(deleted), 5)
+            self.assertEqual(len(locked), 0)
+
+            # Kiem tra file da bi xoa
+            self.assertFalse(os.path.exists(csv_path))
+            self.assertFalse(os.path.exists(stat_path))
+            self.assertFalse(os.path.exists(md_path))
+            self.assertFalse(os.path.exists(chart1_path))
+            self.assertFalse(os.path.exists(chart2_path))
+
+            # Thu muc charts van ton tai
+            self.assertTrue(os.path.exists(charts_dir))
+
+    def test_clear_buttons_exist_in_gui(self):
+        """Kiem tra cac nut xoa ket qua cu co mat tren giao dien."""
+        self.assertTrue(hasattr(self.window, "btn_clear"))
+        self.assertTrue(hasattr(self.window, "btn_clear_header"))
+        self.assertTrue(hasattr(self.window, "btn_stats_clear"))
+
+        self.assertIn("XÓA KẾT QUẢ", self.window.btn_clear.text().upper())
+        self.assertIn("XÓA KẾT QUẢ", self.window.btn_clear_header.text().upper())
+        self.assertIn("XÓA KẾT QUẢ", self.window.btn_stats_clear.text().upper())
+
+    def test_running_state_toggles_clear_buttons(self):
+        """Kiem tra trang thai vo hieu hoa / kich hoat cac nut xoa khi he thong dang chay."""
+        # Khi bat dau chay: nut xoa phai bi vo hieu hoa de tranh race condition
+        self.window._set_running_state(True)
+        self.assertFalse(self.window.btn_clear.isEnabled())
+        self.assertFalse(self.window.btn_clear_header.isEnabled())
+        self.assertFalse(self.window.btn_stats_clear.isEnabled())
+        self.assertFalse(self.window.btn_start.isEnabled())
+        self.assertTrue(self.window.btn_stop.isEnabled())
+
+        # Khi dung chay: nut xoa duoc bat lai
+        self.window._set_running_state(False)
+        self.assertTrue(self.window.btn_clear.isEnabled())
+        self.assertTrue(self.window.btn_clear_header.isEnabled())
+        self.assertTrue(self.window.btn_stats_clear.isEnabled())
+        self.assertTrue(self.window.btn_start.isEnabled())
+        self.assertFalse(self.window.btn_stop.isEnabled())
+
+    def test_on_clear_results_clicked_confirmation_yes(self):
+        """Kiem tra nguoi dung bam Dong y tren hop thoai -> du lieu duoc xoa va GUI duoc reset."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.window.results_dir = tmpdir
+            self.window.charts_dir = os.path.join(tmpdir, "charts")
+            os.makedirs(self.window.charts_dir, exist_ok=True)
+
+            dummy_csv = os.path.join(tmpdir, "benchmark_results.csv")
+            dummy_chart = os.path.join(self.window.charts_dir, "01_encryption_time.png")
+            with open(dummy_csv, "w") as f:
+                f.write("run_id,algorithm\n1,None\n")
+            with open(dummy_chart, "w") as f:
+                f.write("fake_png")
+
+            # Gia lap co du lieu tren table live
+            self.window.table_live.insertRow(0)
+            self.window.table_stats.insertRow(0)
+            self.window.progress_bar.setValue(50)
+            self.window.lbl_card_progress.setText("5 / 10")
+
+            with patch.object(QMessageBox, "question", return_value=QMessageBox.Yes), \
+                 patch.object(QMessageBox, "information"):
+                self.window._on_clear_results_clicked()
+
+            # Kiem tra file da bi xoa
+            self.assertFalse(os.path.exists(dummy_csv))
+            self.assertFalse(os.path.exists(dummy_chart))
+
+            # Kiem tra GUI duoc reset
+            self.assertEqual(self.window.table_live.rowCount(), 0)
+            self.assertEqual(self.window.table_stats.rowCount(), 0)
+            self.assertEqual(self.window.progress_bar.value(), 0)
+            self.assertEqual(self.window.lbl_card_progress.text(), "--")
+            self.assertIn("Chưa có biểu đồ", self.window.lbl_chart_img.text())
+
+    def test_on_clear_results_clicked_confirmation_no(self):
+        """Kiem tra nguoi dung bam Khong / Cancel -> khong xoa file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.window.results_dir = tmpdir
+            dummy_csv = os.path.join(tmpdir, "benchmark_results.csv")
+            with open(dummy_csv, "w") as f:
+                f.write("keep_this_data")
+
+            with patch.object(QMessageBox, "question", return_value=QMessageBox.No):
+                self.window._on_clear_results_clicked()
+
+            # File van phai con nguyen
+            self.assertTrue(os.path.exists(dummy_csv))
+
+    def test_on_clear_results_blocked_when_worker_running(self):
+        """Kiem tra khong cho xoa khi dang co luong hoat dong."""
+        mock_worker = MagicMock()
+        mock_worker.isRunning.return_value = True
+        self.window._client_worker = mock_worker
+
+        with patch.object(QMessageBox, "warning") as mock_warn:
+            self.window._on_clear_results_clicked()
+            mock_warn.assert_called_once()
 
 
 if __name__ == "__main__":

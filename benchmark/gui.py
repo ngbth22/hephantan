@@ -264,6 +264,14 @@ class BenchmarkWindow(QMainWindow):
         h_layout.addLayout(t_col)
         h_layout.addStretch()
 
+        self.btn_clear_header = QPushButton("🗑️ Xóa kết quả cũ")
+        self.btn_clear_header.setStyleSheet(
+            "background-color: #c2410c; color: white; padding: 6px 12px; font-weight: bold; border-radius: 4px;"
+        )
+        self.btn_clear_header.setToolTip("Xóa toàn bộ dữ liệu CSV, bảng thống kê và 8 ảnh biểu đồ cũ")
+        self.btn_clear_header.clicked.connect(self._on_clear_results_clicked)
+        h_layout.addWidget(self.btn_clear_header)
+
         self.btn_open_folder = QPushButton("📁 Thư mục kết quả")
         self.btn_open_folder.setStyleSheet("padding: 6px 12px; font-weight: bold;")
         self.btn_open_folder.clicked.connect(self._on_open_results_folder)
@@ -405,12 +413,21 @@ class BenchmarkWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         self.btn_stop.clicked.connect(self._on_stop_clicked)
 
+        self.btn_clear = QPushButton("🗑️ XÓA KẾT QUẢ CŨ")
+        self.btn_clear.setFont(QFont("Arial", 11, QFont.Bold))
+        self.btn_clear.setStyleSheet(
+            "background-color: #c2410c; color: white; padding: 10px 18px; border-radius: 6px;"
+        )
+        self.btn_clear.setToolTip("Xóa toàn bộ file kết quả CSV, bảng thống kê và 8 ảnh biểu đồ cũ để chuẩn bị lần chạy mới")
+        self.btn_clear.clicked.connect(self._on_clear_results_clicked)
+
         self.btn_reanalyze = QPushButton("🔄 Phân tích lại CSV & Sinh 8 Biểu đồ")
         self.btn_reanalyze.setStyleSheet("padding: 8px 14px; font-weight: bold;")
         self.btn_reanalyze.clicked.connect(self._on_reanalyze_clicked)
 
         action_row.addWidget(self.btn_start, stretch=2)
         action_row.addWidget(self.btn_stop, stretch=1)
+        action_row.addWidget(self.btn_clear, stretch=1)
         action_row.addWidget(self.btn_reanalyze, stretch=1)
         layout.addLayout(action_row)
 
@@ -554,6 +571,12 @@ class BenchmarkWindow(QMainWindow):
         self.btn_open_report.clicked.connect(self._on_open_report)
         btn_row.addWidget(self.btn_open_report)
 
+        self.btn_stats_clear = QPushButton("🗑️ Xóa kết quả & Biểu đồ cũ")
+        self.btn_stats_clear.setStyleSheet("padding: 6px 12px; font-weight: bold; color: #f87171;")
+        self.btn_stats_clear.setToolTip("Xóa toàn bộ kết quả để chạy lại lượt đo mới")
+        self.btn_stats_clear.clicked.connect(self._on_clear_results_clicked)
+        btn_row.addWidget(self.btn_stats_clear)
+
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -678,6 +701,18 @@ class BenchmarkWindow(QMainWindow):
                 warmup=warmup,
             )
 
+    def _set_running_state(self, running: bool) -> None:
+        """Cập nhật trạng thái kích hoạt của các nút điều khiển khi tiến trình đang chạy/dừng."""
+        self.btn_start.setEnabled(not running)
+        self.btn_stop.setEnabled(running)
+        if hasattr(self, "btn_clear"):
+            self.btn_clear.setEnabled(not running)
+        if hasattr(self, "btn_clear_header"):
+            self.btn_clear_header.setEnabled(not running)
+        if hasattr(self, "btn_stats_clear"):
+            self.btn_stats_clear.setEnabled(not running)
+        self.btn_reanalyze.setEnabled(not running)
+
     def _start_local_mode(
         self,
         port: int,
@@ -686,8 +721,7 @@ class BenchmarkWindow(QMainWindow):
         runs: int,
         warmup: int,
     ) -> None:
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
+        self._set_running_state(True)
         self.table_live.setRowCount(0)
         self.progress_bar.setValue(0)
         self.append_log("[1/2] Đang khởi động Server ngầm tại 127.0.0.1 ...")
@@ -719,8 +753,7 @@ class BenchmarkWindow(QMainWindow):
         runs: int,
         warmup: int,
     ) -> None:
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
+        self._set_running_state(True)
         self.table_live.setRowCount(0)
         self.progress_bar.setValue(0)
         self.append_log(f"Khởi động Benchmark Client kết nối tới {host}:{port} ...")
@@ -825,8 +858,7 @@ class BenchmarkWindow(QMainWindow):
 
     @Slot(bool, str, str)
     def _on_client_finished(self, success: bool, message: str, csv_path: str) -> None:
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
+        self._set_running_state(False)
 
         # Dung server ngam neu dang chay local
         if self._server_worker and self._server_worker.isRunning():
@@ -848,11 +880,11 @@ class BenchmarkWindow(QMainWindow):
 
     def _run_analyze_process(self) -> None:
         self.append_log("[*] Khởi động luồng tính toán thống kê và vẽ 8 biểu đồ độ phân giải cao ...")
-        self.btn_reanalyze.setEnabled(False)
+        self._set_running_state(True)
 
         self._analyze_worker = AnalyzeWorker(self.csv_path, self.charts_dir, self.summary_md)
         def on_analyze_finished(succ: bool, msg: str, charts: list):
-            self.btn_reanalyze.setEnabled(True)
+            self._set_running_state(False)
             self.append_log(f"[+] {msg}")
             if succ:
                 self._load_charts_into_viewer()
@@ -864,6 +896,83 @@ class BenchmarkWindow(QMainWindow):
 
         self._analyze_worker.finished_signal.connect(on_analyze_finished)
         self._analyze_worker.start()
+
+    # ------------------------------------------------------------- CLEAR RESULTS
+    def _on_clear_results_clicked(self) -> None:
+        """Xóa toàn bộ kết quả cũ bao gồm các file dữ liệu và ảnh biểu đồ để chuẩn bị cho lần chạy mới."""
+        if (self._client_worker and self._client_worker.isRunning()) or \
+           (self._server_worker and self._server_worker.isRunning()) or \
+           (self._analyze_worker and self._analyze_worker.isRunning()):
+            QMessageBox.warning(
+                self,
+                "Tiến trình đang chạy",
+                "Hệ thống đang thực hiện đo đạc hoặc phân tích dữ liệu.\n"
+                "Vui lòng dừng tiến trình trước khi xóa kết quả cũ!",
+            )
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Xác nhận xóa kết quả cũ",
+            "Bạn có chắc chắn muốn xóa toàn bộ kết quả cũ để chuẩn bị cho lần chạy mới không?\n\n"
+            "Các mục sẽ bị xóa:\n"
+            "  • Dữ liệu đo thô: benchmark_results.csv\n"
+            "  • Bảng thống kê chi tiết: detailed_statistics.csv\n"
+            "  • Báo cáo tổng hợp: summary_table.md\n"
+            "  • Toàn bộ 8 ảnh biểu đồ phân tích trong thư mục charts/\n\n"
+            "Bảng dữ liệu và giao diện sẽ được làm mới hoàn toàn.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        deleted_files, locked_files = common.clear_benchmark_results(self.results_dir)
+
+        # 1. Reset Tab 1: Live table, progress bar, metric cards
+        self.table_live.setRowCount(0)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Sẵn sàng khởi chạy ...")
+        self.lbl_card_progress.setText("--")
+        self.lbl_card_latest.setText("--")
+        self.lbl_card_time.setText("--")
+        self.lbl_card_res.setText("--")
+
+        # 2. Reset Tab 2: Trình xem biểu đồ
+        self._chart_files = []
+        self.lbl_chart_img.clear()
+        self.lbl_chart_img.setText(
+            "Chưa có biểu đồ. Dữ liệu và ảnh cũ đã được xóa sạch.\n"
+            "Hãy nhấn 'BẮT ĐẦU BENCHMARK' để chạy lần đo mới hoặc bấm 'Phân tích lại CSV & Sinh 8 Biểu đồ'."
+        )
+
+        # 3. Reset Tab 3: Bảng thống kê
+        self.table_stats.setRowCount(0)
+
+        # 4. Ghi log và thông báo kết quả
+        if locked_files:
+            self.append_log(
+                f"[!] Cảnh báo dọn dẹp: Đã xóa {len(deleted_files)} tệp, nhưng có {len(locked_files)} tệp bị khóa (ví dụ bởi Excel): {', '.join(locked_files)}"
+            )
+            QMessageBox.warning(
+                self,
+                "Cảnh báo tệp đang mở",
+                f"Đã xóa {len(deleted_files)} tệp kết quả cũ.\n\n"
+                f"Tuy nhiên, có {len(locked_files)} tệp không thể xóa vì đang được mở bởi ứng dụng khác:\n"
+                + "\n".join(f"  • {f}" for f in locked_files)
+                + "\n\nVui lòng đóng các tệp trên và thử lại nếu cần xóa sạch hoàn toàn.",
+            )
+        else:
+            self.append_log(
+                f"🗑️ [DỌN DẸP] Đã xóa thành công toàn bộ {len(deleted_files)} tệp kết quả cũ (dữ liệu CSV, bảng thống kê và 8 ảnh biểu đồ)."
+            )
+            self.append_log("[i] Hệ thống và giao diện đã được đặt lại trạng thái ban đầu, sẵn sàng cho lần chạy mới.")
+            QMessageBox.information(
+                self,
+                "Đã xóa kết quả thành công",
+                f"Đã xóa thành công toàn bộ {len(deleted_files)} tệp kết quả cũ (bao gồm ảnh biểu đồ và dữ liệu CSV/báo cáo)!\n\n"
+                "Giao diện đã được làm mới hoàn toàn, sẵn sàng cho lần chạy đo đạc mới.",
+            )
 
     # ------------------------------------------------------------- CHARTS VIEWER
     def _load_charts_into_viewer(self) -> None:
@@ -892,6 +1001,8 @@ class BenchmarkWindow(QMainWindow):
 
     def _show_chart(self, idx: int) -> None:
         if not self._chart_files or idx < 0 or idx >= len(self._chart_files):
+            self.lbl_chart_img.clear()
+            self.lbl_chart_img.setText("Chưa có biểu đồ. Hãy chạy Benchmark hoặc bấm 'Phân tích lại CSV & Sinh 8 Biểu đồ'.")
             return
         fpath = self._chart_files[idx]
         if os.path.exists(fpath):
@@ -904,6 +1015,7 @@ class BenchmarkWindow(QMainWindow):
             )
             self.lbl_chart_img.setPixmap(scaled)
         else:
+            self.lbl_chart_img.clear()
             self.lbl_chart_img.setText(f"Chưa có tệp biểu đồ: {os.path.basename(fpath)}")
 
     # ------------------------------------------------------------- STATS VIEWER

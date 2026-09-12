@@ -22,6 +22,7 @@ sys.path.insert(0, BENCH_DIR)
 
 import analyze
 import client
+import common
 import server
 
 
@@ -55,6 +56,7 @@ def run_full_pipeline(
     results_dir: str = "benchmark/results",
     seed: int = 42,
     is_local: bool | None = None,
+    clean: bool = False,
 ) -> None:
     # Chuan hoa results_dir: Neu nguoi dung dang dung trong thu muc benchmark va de mac dinh "benchmark/results"
     # thi chuyen thanh "results" de tranh tao long "benchmark/benchmark/results".
@@ -64,6 +66,12 @@ def run_full_pipeline(
         results_dir = os.path.join(script_dir, "results")
 
     os.makedirs(results_dir, exist_ok=True)
+    if clean:
+        deleted, locked = common.clear_benchmark_results(results_dir)
+        print(f"[*] Da xoa {len(deleted)} tep ket qua va anh bieu do cu trong {results_dir}")
+        if locked:
+            print(f"[!] Canh bao: {len(locked)} tep dang bi khoa khong the xoa: {', '.join(locked)}")
+
     csv_file = os.path.join(results_dir, "benchmark_results.csv")
     charts_dir = os.path.join(results_dir, "charts")
     summary_md = os.path.join(results_dir, "summary_table.md")
@@ -132,6 +140,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Cuong che che do remote (khong bat server noi bo du la 127.0.0.1)",
     )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Xoa toan bo ket qua cu (CSV, MD va anh bieu do) truoc khi chay lan moi",
+    )
     parser.add_argument("--gui", action="store_true", help="Mo giao dien do hoa Benchmark GUI")
     args = parser.parse_args()
 
@@ -149,4 +162,5 @@ if __name__ == "__main__":
         results_dir=args.results_dir,
         seed=args.seed,
         is_local=is_local_flag,
+        clean=args.clean,
     )

@@ -151,3 +151,41 @@ def recv_ack(sock: socket.socket) -> tuple[float, float, bool, float, float, flo
         ACK_FORMAT, ack_raw
     )
     return decrypt_ms, verify_ms, success, dec_cpu_pct, dec_ram_mb, dec_ram_delta_kb
+
+
+def clear_benchmark_results(results_dir: str) -> tuple[list[str], list[str]]:
+    """
+    Xóa toàn bộ kết quả benchmark cũ bao gồm:
+    - Các file dữ liệu CSV, file báo cáo Markdown trong results_dir.
+    - Toàn bộ file ảnh biểu đồ (*.png) trong thư mục con charts/.
+
+    Trả về tuple: (danh_sach_file_da_xoa, danh_sach_file_loi_bi_khoa)
+    """
+    deleted_files: list[str] = []
+    locked_files: list[str] = []
+
+    charts_dir = os.path.join(results_dir, "charts")
+    if os.path.exists(charts_dir):
+        for fname in os.listdir(charts_dir):
+            fpath = os.path.join(charts_dir, fname)
+            if os.path.isfile(fpath):
+                try:
+                    os.remove(fpath)
+                    deleted_files.append(os.path.join("charts", fname))
+                except Exception as exc:
+                    locked_files.append(f"{os.path.join('charts', fname)} ({exc})")
+
+    if os.path.exists(results_dir):
+        for fname in os.listdir(results_dir):
+            fpath = os.path.join(results_dir, fname)
+            if os.path.isfile(fpath):
+                try:
+                    os.remove(fpath)
+                    deleted_files.append(fname)
+                except Exception as exc:
+                    locked_files.append(f"{fname} ({exc})")
+
+    # Đảm bảo thư mục charts vẫn tồn tại sẵn sàng cho lần sinh biểu đồ mới
+    os.makedirs(charts_dir, exist_ok=True)
+
+    return deleted_files, locked_files
