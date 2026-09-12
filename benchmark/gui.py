@@ -309,21 +309,24 @@ class BenchmarkWindow(QMainWindow):
         top_grid.setSpacing(10)
 
         # Group 1: Che do van hanh
-        mode_group = QGroupBox("1. Chế độ Vận hành (Execution Mode)")
-        mode_layout = QVBoxLayout(mode_group)
+        self.mode_group = QGroupBox("1. Chế độ Vận hành (Execution Mode)")
+        mode_layout = QVBoxLayout(self.mode_group)
         mode_layout.setSpacing(6)
 
         self.radio_local = QRadioButton("Tự động toàn bộ (Local All-in-One)")
         self.radio_local.setChecked(True)
-        self.radio_sender = QRadioButton("Đo đạc từ xa (Remote Sender -> VM2)")
+        self.radio_sender = QRadioButton("Sender Server (Đo đạc từ xa -> VM2 Receiver)")
+        self.radio_server = QRadioButton("Receiver Server (Lắng nghe đo đạc từ máy Sender)")
 
         self.mode_btn_group = QButtonGroup(self)
         self.mode_btn_group.addButton(self.radio_local, 1)
         self.mode_btn_group.addButton(self.radio_sender, 2)
+        self.mode_btn_group.addButton(self.radio_server, 3)
         self.mode_btn_group.idClicked.connect(self._on_mode_changed)
 
         mode_layout.addWidget(self.radio_local)
         mode_layout.addWidget(self.radio_sender)
+        mode_layout.addWidget(self.radio_server)
 
         self.lbl_mode_hint = QLabel("💡 Tự động chạy Server ngầm + Client đo đạc trên máy (127.0.0.1).")
         self.lbl_mode_hint.setStyleSheet("color: #94a3b8; font-size: 11px; font-style: italic;")
@@ -331,7 +334,7 @@ class BenchmarkWindow(QMainWindow):
         mode_layout.addWidget(self.lbl_mode_hint)
         mode_layout.addStretch()
 
-        top_grid.addWidget(mode_group, 0, 0)
+        top_grid.addWidget(self.mode_group, 0, 0)
 
         # Group 2: Dia chi mang & Ping
         net_group = QGroupBox("2. Cấu hình Mạng TCP (Target Host & Port)")
@@ -353,8 +356,8 @@ class BenchmarkWindow(QMainWindow):
         top_grid.addWidget(net_group, 0, 1)
 
         # Group 3: Kich ban do dac
-        scenario_group = QGroupBox("3. Kịch bản Đo đạc (Algorithms & Sizes)")
-        sc_layout = QGridLayout(scenario_group)
+        self.scenario_group = QGroupBox("3. Kịch bản Đo đạc (Algorithms & Sizes)")
+        sc_layout = QGridLayout(self.scenario_group)
 
         # Chon thuat toan
         sc_layout.addWidget(QLabel("<b>Thuật toán:</b>"), 0, 0)
@@ -393,7 +396,7 @@ class BenchmarkWindow(QMainWindow):
         self.spin_runs.setValue(30)
         sc_layout.addWidget(self.spin_runs, 2, 1)
 
-        top_grid.addWidget(scenario_group, 0, 2)
+        top_grid.addWidget(self.scenario_group, 0, 2)
         layout.addLayout(top_grid)
 
         # Hang 2: Action Buttons + Progress Bar
@@ -606,20 +609,37 @@ class BenchmarkWindow(QMainWindow):
         if mode_id == 1:  # Local All-in-One
             self.edit_host.setText("127.0.0.1")
             self.edit_host.setEnabled(False)
+            self.spin_port.setEnabled(True)
             self.btn_ping.setEnabled(False)
+            if hasattr(self, "scenario_group"):
+                self.scenario_group.setEnabled(True)
             self.btn_start.setText("▶ BẮT ĐẦU BENCHMARK (LOCAL)")
             if hasattr(self, "lbl_mode_hint"):
                 self.lbl_mode_hint.setText("💡 Tự động chạy Server ngầm + Client đo đạc trên máy (127.0.0.1).")
             self.append_log("Đã chuyển sang chế độ: Tự động toàn bộ (Local All-in-One).")
-        elif mode_id == 2:  # Remote Sender
-            if self.edit_host.text() == "127.0.0.1" or not self.edit_host.text().strip():
+        elif mode_id == 2:  # Sender Server
+            if self.edit_host.text() in ("127.0.0.1", "0.0.0.0") or not self.edit_host.text().strip():
                 self.edit_host.setText("192.168.1.100")
             self.edit_host.setEnabled(True)
+            self.spin_port.setEnabled(True)
             self.btn_ping.setEnabled(True)
-            self.btn_start.setText("▶ BẮT ĐẦU BENCHMARK (SENDER)")
+            if hasattr(self, "scenario_group"):
+                self.scenario_group.setEnabled(True)
+            self.btn_start.setText("▶ BẮT ĐẦU BENCHMARK (SENDER SERVER)")
             if hasattr(self, "lbl_mode_hint"):
-                self.lbl_mode_hint.setText("💡 Kết nối tới máy chủ Receiver trên VM2 từ xa qua IP:Port.")
-            self.append_log("Đã chuyển sang chế độ: Đo đạc từ xa (Remote Sender -> VM2).")
+                self.lbl_mode_hint.setText("💡 Chế độ Sender Server: Kết nối tới máy chủ Receiver trên VM2 từ xa qua IP:Port.")
+            self.append_log("Đã chuyển sang chế độ: Sender Server (Đo đạc từ xa -> VM2 Receiver).")
+        elif mode_id == 3:  # Receiver Server
+            self.edit_host.setText("0.0.0.0")
+            self.edit_host.setEnabled(False)
+            self.spin_port.setEnabled(True)
+            self.btn_ping.setEnabled(False)
+            if hasattr(self, "scenario_group"):
+                self.scenario_group.setEnabled(False)
+            self.btn_start.setText("▶ KHỞI ĐỘNG RECEIVER SERVER")
+            if hasattr(self, "lbl_mode_hint"):
+                self.lbl_mode_hint.setText("💡 Chế độ Receiver Server: Lắng nghe kết nối đo đạc từ máy Sender (0.0.0.0:Port). Tự động giải mã và gửi ACK.")
+            self.append_log("Đã chuyển sang chế độ: Receiver Server (Lắng nghe đo đạc từ máy Sender).")
 
     # ------------------------------------------------------------- PING TEST
     def _on_ping_test(self) -> None:
@@ -645,8 +665,14 @@ class BenchmarkWindow(QMainWindow):
     # ------------------------------------------------------------- START / STOP BENCHMARK
     def _on_start_clicked(self) -> None:
         mode_id = self.mode_btn_group.checkedId()
-        host = self.edit_host.text().strip()
         port = self.spin_port.value()
+
+        # Truong hop 3: Receiver Server Mode (May chu lang nghe do dac tu may Sender)
+        if mode_id == 3:
+            self._start_server_mode(host="0.0.0.0", port=port)
+            return
+
+        host = self.edit_host.text().strip()
 
         # Lay danh sach thuat toan duoc chon
         selected_algos = []
@@ -690,7 +716,7 @@ class BenchmarkWindow(QMainWindow):
             )
             return
 
-        # Truong hop 2: Remote Sender
+        # Truong hop 2: Sender Server
         if mode_id == 2:
             self._start_client_mode(
                 host=host,
@@ -705,6 +731,8 @@ class BenchmarkWindow(QMainWindow):
         """Cập nhật trạng thái kích hoạt của các nút điều khiển khi tiến trình đang chạy/dừng."""
         self.btn_start.setEnabled(not running)
         self.btn_stop.setEnabled(running)
+        if hasattr(self, "mode_group"):
+            self.mode_group.setEnabled(not running)
         if hasattr(self, "btn_clear"):
             self.btn_clear.setEnabled(not running)
         if hasattr(self, "btn_clear_header"):
@@ -712,6 +740,23 @@ class BenchmarkWindow(QMainWindow):
         if hasattr(self, "btn_stats_clear"):
             self.btn_stats_clear.setEnabled(not running)
         self.btn_reanalyze.setEnabled(not running)
+
+    def _start_server_mode(self, host: str, port: int) -> None:
+        self._set_running_state(True)
+        self.btn_stop.setText("⏹ DỪNG RECEIVER SERVER")
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat(f"Receiver Server đang lắng nghe tại {host}:{port} ...")
+        self.append_log(f"[*] Khởi động Receiver Server tại {host}:{port} (chờ kết nối từ máy Sender)...")
+
+        self._server_worker = BenchmarkServerWorker(host, port)
+        self._server_worker.log_signal.connect(self.append_log)
+        def on_server_stopped():
+            self._set_running_state(False)
+            self.btn_stop.setText("⏹ DỪNG LẠI")
+            self.progress_bar.setFormat("Receiver Server đã dừng.")
+            self.append_log("[*] Receiver Server đã dừng lắng nghe.")
+        self._server_worker.stopped_signal.connect(on_server_stopped)
+        self._server_worker.start()
 
     def _start_local_mode(
         self,

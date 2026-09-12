@@ -25,7 +25,10 @@ Hệ thống tự động đo: *Thời gian mã hóa/giải mã, RTT, Throughput
   python benchmark_gui.py
   # hoặc: python benchmark/run_benchmark.py --gui
   ```
-  *(Có sẵn nút mở Benchmark GUI trực tiếp từ thanh công cụ của Sender/Receiver GUI).*
+  *Hỗ trợ 3 chế độ vận hành linh hoạt ngay trên giao diện:*
+  - **Local All-in-One**: Tự động chạy Server ngầm + Client đo đạc trên máy cục bộ (`127.0.0.1`).
+  - **Sender Server**: Máy gửi đo đạc kết nối tới VM2 từ xa qua IP:Port.
+  - **Receiver Server**: Máy chủ lắng nghe kết nối đo đạc từ máy Sender trên cổng TCP (`0.0.0.0:5000`).
 
 * **Cách 2 - Dòng lệnh CLI (Tự động nhận diện chế độ theo `--host`):**
   ```powershell
