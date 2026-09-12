@@ -63,11 +63,12 @@ hephantan/
 │           ├── 06_throughput.png
 │           ├── 07_cpu_usage.png
 │           └── 08_ram_usage.png
-├── tests/             # Bộ kiểm thử tự động toàn diện (33 test cases)
-│   ├── test_ciphers.py       # Unit tests cho Playfair, Caesar, AES, Protocol
-│   ├── test_integration.py   # Integration tests qua TCP Socket
-│   ├── test_gui.py           # Kiểm thử giao diện Sender/Receiver PySide6
-│   └── test_benchmark_gui.py # Kiểm thử giao diện Benchmark GUI PySide6
+├── tests/             # Bộ kiểm thử tự động toàn diện (36 test cases)
+│   ├── test_ciphers.py            # Unit tests cho Playfair, Caesar, AES, Protocol
+│   ├── test_integration.py        # Integration tests qua TCP Socket
+│   ├── test_gui.py                # Kiểm thử giao diện Sender/Receiver PySide6
+│   ├── test_benchmark_gui.py      # Kiểm thử giao diện Benchmark GUI PySide6
+│   └── test_benchmark_pipeline.py # Kiểm thử auto-detection và pipeline benchmark
 ├── docs/              # Tài liệu báo cáo kỹ thuật
 │   ├── bao-cao-trien-khai.md # Báo cáo kỹ thuật triển khai theo ISO/IEC/IEEE 26514:2022
 │   └── bao-cao-benchmark.md  # Báo cáo thực nghiệm hiệu năng & phân tích 8 biểu đồ
@@ -115,7 +116,7 @@ VM2 sẽ tự động nhận gói tin, hiển thị thuật toán tương ứng,
 Dự án tích hợp bộ kiểm thử tự động toàn diện:
 
 ```powershell
-# Chạy toàn bộ 27 test cases
+# Chạy toàn bộ 36 test cases
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
@@ -217,19 +218,41 @@ python benchmark/run_benchmark.py --gui
 > **Mẹo:** Bạn cũng có thể bấm trực tiếp nút **"🚀 Mở Benchmark GUI"** ngay trên thanh điều khiển của cả **Sender GUI** (`sender/main.py`) và **Receiver GUI** (`receiver/main.py`).
 
 **Các tính năng nổi bật trên Benchmark GUI:**
-- **3 chế độ linh hoạt**: Tự động toàn bộ (Local All-in-One), Sender Client kết nối VM2 từ xa (tích hợp nút Ping Test), hoặc Receiver Server lắng nghe.
+- **3 chế độ linh hoạt**: Tự động toàn bộ (Local All-in-One Self-Test), Sender Client kết nối VM2 từ xa (tích hợp nút Ping Test), hoặc Receiver Server lắng nghe.
+- **Thay đổi IP linh hoạt**: Chuyển sang tab *Benchmark Client* hoặc *Local Mode*, nhập IP máy Receiver đích vào ô **IP Receiver / Host** (ví dụ `192.168.1.50`) và Port (mặc định `5000`).
 - **Tùy chọn kịch bản**: Tự do chọn/bỏ chọn từng thuật toán (`None`, `Caesar`, `Playfair`, `AES-128-CBC`), kích thước (`1 KB`, `100 KB`, `1 MB`), số lần đo chính và warm-up.
 - **Theo dõi trực tiếp**: Thanh tiến trình `QProgressBar`, 4 thẻ tóm tắt (Metric Cards), bảng dữ liệu thời gian thực cuộn theo từng lượt đo (kèm % CPU, RAM RSS & Delta).
 - **Tab Xem 8 Biểu đồ**: Xem trực tiếp 8 biểu đồ phân tích 300 DPI ngay trong ứng dụng, có nút chuyển ảnh và mở thư mục ảnh gốc.
 - **Tab Bảng Thống kê**: Xem bảng số liệu trung bình/trung vị và nút mở nhanh file CSV / báo cáo.
 
-### Cách 2: Tự động toàn bộ qua Dòng lệnh CLI:
-```powershell
-python benchmark/run_benchmark.py
-```
-Lệnh sẽ tự động khởi động Receiver ngầm, chạy toàn bộ 372 lượt đo, xuất CSV, tính toán thống kê và vẽ 8 biểu đồ so sánh vào `benchmark/results/charts/`.
+### Cách 2: Chạy qua Dòng lệnh CLI (`run_benchmark.py`):
 
-### Cách 3: Chạy phân tán trên 2 máy ảo qua Dòng lệnh CLI:
+Chương trình tích hợp **cơ chế tự động nhận diện chế độ thông minh theo tham số `--host`**:
+
+1. **Chế độ Self-Test nội bộ (Mặc định khi không truyền IP hoặc truyền 127.0.0.1)**:
+   ```powershell
+   python benchmark/run_benchmark.py
+   # hoặc: python benchmark/run_benchmark.py --host 127.0.0.1
+   ```
+   > Chương trình tự khởi động Receiver ngầm trên thread nền, tự đo đạc 372 lượt trên máy cục bộ, tự phân tích và xuất 8 biểu đồ vào `benchmark/results/charts/`.
+
+2. **Chế độ Remote từ xa (Đổi sang IP của máy ảo Receiver khác)**:
+   ```powershell
+   # Kết nối tới Receiver tại IP máy ảo khác (ví dụ: 192.168.1.50)
+   python benchmark/run_benchmark.py --host 192.168.1.50
+
+   # Tùy chỉnh thêm cổng port hoặc thư mục kết quả:
+   python benchmark/run_benchmark.py --host 192.168.1.50 --port 5000 --results-dir benchmark/results
+   ```
+   > Khi truyền IP khác `127.0.0.1`, chương trình **tự động chuyển sang chế độ Remote**: không bật server nội bộ nữa, thực hiện Ping 10 gói kiểm tra đường truyền và gửi dữ liệu trực tiếp tới Receiver từ xa.
+
+3. **Cờ cưỡng chế `--remote` (Tùy chọn)**:
+   ```powershell
+   python benchmark/run_benchmark.py --host 127.0.0.1 --remote
+   ```
+   > Dùng khi bạn đã tự chạy sẵn một Receiver độc lập trên máy và muốn script chỉ đóng vai trò client đo đạc mà không tự khởi tạo thêm server nền.
+
+### Cách 3: Chạy phân tán thủ công từng thành phần trên 2 máy ảo:
 - **Trên VM2 (Receiver)**:
   ```powershell
   python benchmark/server.py --host 0.0.0.0 --port 5000
