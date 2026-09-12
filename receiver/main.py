@@ -1,5 +1,5 @@
 """
-main.py (VM2 - Receiver) - Khoi dong ung dung Playfair Receiver.
+main.py (VM2 - Receiver) - Khoi dong ung dung Cryptography Receiver (Playfair, Caesar, AES-128-CBC).
 
 Chay: python main.py
 """

@@ -1,5 +1,5 @@
 """
-main.py (VM1 - Sender) - Khoi dong ung dung Playfair Sender.
+main.py (VM1 - Sender) - Khoi dong ung dung Cryptography Sender (Playfair, Caesar, AES-128-CBC).
 
 Chay: python main.py
 """

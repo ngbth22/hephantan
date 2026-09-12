@@ -1,8 +1,10 @@
 """
 gui.py (VM1 - Sender) - Giao dien PySide6 cho may gui.
 
-Hien thi: Key, Plaintext, ma tran Playfair 5x5, Ciphertext,
-thong tin ket noi (IP/Port cua Receiver) va trang thai gui.
+Ho tro 3 thuat toan: Playfair, Caesar, AES-128-CBC.
+Hien thi: Lua chon thuat toan, Khoa/IV tuong ung, Plaintext,
+truc quan hoa (ma tran 5x5 / bang dich / thong so khoi AES),
+Ciphertext, cau hinh mang va nhat ky truyen tin.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QComboBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,10 +23,13 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+import aes_cbc
+import caesar
 import config
 import playfair
 import protocol
@@ -35,54 +41,126 @@ class SenderWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VM1 - Playfair Sender")
+        self.setWindowTitle("VM1 - Cryptography Sender (Playfair / Caesar / AES-128-CBC)")
         self.resize(*config.SENDER_WINDOW_SIZE)
         self._sender_thread: SenderThread | None = None
+        self._current_iv_hex: str = ""
         self._build_ui()
 
     # ------------------------------------------------------------- UI
     def _build_ui(self) -> None:
         central = QWidget()
         root = QVBoxLayout(central)
+        mono = QFont(config.MONO_FONT_FAMILY, config.MONO_FONT_SIZE)
 
         # --- Nhom nhap lieu ---
-        input_group = QGroupBox("Dữ liệu đầu vào")
-        input_layout = QGridLayout(input_group)
+        input_group = QGroupBox("Cấu hình mã hóa & Dữ liệu đầu vào")
+        input_layout = QVBoxLayout(input_group)
 
-        input_layout.addWidget(QLabel("Khóa Playfair:"), 0, 0)
-        self.key_edit = QLineEdit()
-        self.key_edit.setPlaceholderText("Ví dụ: MONARCHY")
-        input_layout.addWidget(self.key_edit, 0, 1)
+        # Chon thuat toan
+        algo_row = QHBoxLayout()
+        algo_row.addWidget(QLabel("Thuật toán mã hóa:"))
+        self.algo_combo = QComboBox()
+        self.algo_combo.addItem("Playfair (Ma trận 5×5)", config.ALGORITHM_PLAYFAIR)
+        self.algo_combo.addItem("Caesar (Dịch chuyển ký tự)", config.ALGORITHM_CAESAR)
+        self.algo_combo.addItem("AES-128-CBC (Mã hóa khối 128-bit)", config.ALGORITHM_AES_128_CBC)
+        self.algo_combo.currentIndexChanged.connect(self._on_algo_changed)
+        algo_row.addWidget(self.algo_combo, stretch=1)
+        input_layout.addLayout(algo_row)
 
-        input_layout.addWidget(QLabel("Plaintext:"), 1, 0, Qt.AlignTop)
+        # Stacked widget cho phan nhap khoa / tham so rieng
+        self.key_stack = QStackedWidget()
+
+        # Trang 0: Playfair Key
+        playfair_page = QWidget()
+        pf_layout = QHBoxLayout(playfair_page)
+        pf_layout.setContentsMargins(0, 0, 0, 0)
+        pf_layout.addWidget(QLabel("Khóa Playfair:"))
+        self.playfair_key_edit = QLineEdit()
+        self.playfair_key_edit.setPlaceholderText("Ví dụ: MONARCHY (các chữ cái A-Z)")
+        pf_layout.addWidget(self.playfair_key_edit, stretch=1)
+        self.key_stack.addWidget(playfair_page)
+
+        # Trang 1: Caesar Shift
+        caesar_page = QWidget()
+        cs_layout = QHBoxLayout(caesar_page)
+        cs_layout.setContentsMargins(0, 0, 0, 0)
+        cs_layout.addWidget(QLabel("Độ dịch (Shift k):"))
+        self.caesar_shift_spin = QSpinBox()
+        self.caesar_shift_spin.setRange(-1000, 1000)
+        self.caesar_shift_spin.setValue(config.DEFAULT_CAESAR_SHIFT)
+        cs_layout.addWidget(self.caesar_shift_spin)
+
+        btn_rot3 = QPushButton("k = 3 (Caesar)")
+        btn_rot3.clicked.connect(lambda: self.caesar_shift_spin.setValue(3))
+        cs_layout.addWidget(btn_rot3)
+
+        btn_rot13 = QPushButton("k = 13 (ROT13)")
+        btn_rot13.clicked.connect(lambda: self.caesar_shift_spin.setValue(13))
+        cs_layout.addWidget(btn_rot13)
+        cs_layout.addStretch(1)
+        self.key_stack.addWidget(caesar_page)
+
+        # Trang 2: AES-128-CBC
+        aes_page = QWidget()
+        aes_layout = QGridLayout(aes_page)
+        aes_layout.setContentsMargins(0, 0, 0, 0)
+
+        aes_layout.addWidget(QLabel("Khóa AES (16B / 32 hex):"), 0, 0)
+        self.aes_key_edit = QLineEdit()
+        self.aes_key_edit.setPlaceholderText("Nhập 16 ký tự văn bản hoặc 32 ký tự Hex")
+        aes_layout.addWidget(self.aes_key_edit, 0, 1)
+
+        self.btn_gen_aes_key = QPushButton("Tạo khóa ngẫu nhiên")
+        self.btn_gen_aes_key.clicked.connect(self._on_generate_aes_key)
+        aes_layout.addWidget(self.btn_gen_aes_key, 0, 2)
+
+        aes_layout.addWidget(QLabel("Vector IV (16B / 32 hex):"), 1, 0)
+        self.aes_iv_edit = QLineEdit()
+        self.aes_iv_edit.setPlaceholderText("Vector khởi tạo IV 16 byte (Hex)")
+        aes_layout.addWidget(self.aes_iv_edit, 1, 1)
+
+        self.btn_gen_aes_iv = QPushButton("Tạo IV ngẫu nhiên")
+        self.btn_gen_aes_iv.clicked.connect(self._on_generate_aes_iv)
+        aes_layout.addWidget(self.btn_gen_aes_iv, 1, 2)
+
+        self.key_stack.addWidget(aes_page)
+
+        input_layout.addWidget(self.key_stack)
+
+        # Plaintext
+        pt_layout = QHBoxLayout()
+        pt_layout.addWidget(QLabel("Plaintext:"), alignment=Qt.AlignTop)
         self.plaintext_edit = QPlainTextEdit()
-        self.plaintext_edit.setPlaceholderText("Nhập nội dung tin nhắn...")
-        self.plaintext_edit.setFixedHeight(80)
-        input_layout.addWidget(self.plaintext_edit, 1, 1)
+        self.plaintext_edit.setPlaceholderText("Nhập nội dung tin nhắn cần mã hóa...")
+        self.plaintext_edit.setFixedHeight(75)
+        pt_layout.addWidget(self.plaintext_edit, stretch=1)
+        input_layout.addLayout(pt_layout)
 
-        self.encrypt_button = QPushButton("Tạo ma trận && Mã hóa")
+        # Nut ma hoa
+        self.encrypt_button = QPushButton("Tạo ma trận & Mã hóa")
         self.encrypt_button.clicked.connect(self.on_encrypt)
-        input_layout.addWidget(self.encrypt_button, 2, 1, Qt.AlignRight)
+        input_layout.addWidget(self.encrypt_button, alignment=Qt.AlignRight)
 
         root.addWidget(input_group)
 
         # --- Nhom ket qua ma hoa ---
-        result_group = QGroupBox("Kết quả mã hóa")
+        result_group = QGroupBox("Kết quả mã hóa & Trực quan hóa")
         result_layout = QGridLayout(result_group)
-        mono = QFont(config.MONO_FONT_FAMILY, config.MONO_FONT_SIZE)
 
-        result_layout.addWidget(QLabel("Ma trận Playfair 5×5:"), 0, 0, Qt.AlignTop)
-        self.matrix_view = QPlainTextEdit()
-        self.matrix_view.setReadOnly(True)
-        self.matrix_view.setFont(mono)
-        self.matrix_view.setFixedHeight(110)
-        result_layout.addWidget(self.matrix_view, 0, 1)
+        self.visual_label = QLabel("Ma trận Playfair 5×5:")
+        result_layout.addWidget(self.visual_label, 0, 0, Qt.AlignTop)
+        self.visual_view = QPlainTextEdit()
+        self.visual_view.setReadOnly(True)
+        self.visual_view.setFont(mono)
+        self.visual_view.setFixedHeight(95)
+        result_layout.addWidget(self.visual_view, 0, 1)
 
         result_layout.addWidget(QLabel("Ciphertext:"), 1, 0, Qt.AlignTop)
         self.ciphertext_view = QPlainTextEdit()
         self.ciphertext_view.setReadOnly(True)
         self.ciphertext_view.setFont(mono)
-        self.ciphertext_view.setFixedHeight(70)
+        self.ciphertext_view.setFixedHeight(65)
         result_layout.addWidget(self.ciphertext_view, 1, 1)
 
         root.addWidget(result_group)
@@ -108,7 +186,7 @@ class SenderWindow(QMainWindow):
         root.addWidget(conn_group)
 
         # --- Trang thai / log ---
-        status_group = QGroupBox("Trạng thái gửi")
+        status_group = QGroupBox("Trạng thái gửi & Nhật ký")
         status_layout = QVBoxLayout(status_group)
         self.status_label = QLabel("Chưa gửi.")
         status_layout.addWidget(self.status_label)
@@ -120,15 +198,56 @@ class SenderWindow(QMainWindow):
 
         self.setCentralWidget(central)
 
+        # Khoi tao khoa ngau nhien cho AES san sang
+        self._on_generate_aes_key()
+        self._on_generate_aes_iv()
+
     # -------------------------------------------------------- Handlers
+    def _on_algo_changed(self, index: int) -> None:
+        """Chuyen doi giao dien khi nguoi dung chon thuat toan khac."""
+        self.key_stack.setCurrentIndex(index)
+        algo = self.algo_combo.currentData()
+
+        if algo == config.ALGORITHM_PLAYFAIR:
+            self.encrypt_button.setText("Tạo ma trận & Mã hóa")
+            self.visual_label.setText("Ma trận Playfair 5×5:")
+        elif algo == config.ALGORITHM_CAESAR:
+            self.encrypt_button.setText("Mã hóa Caesar")
+            self.visual_label.setText("Bảng quy tắc dịch Caesar:")
+        elif algo == config.ALGORITHM_AES_128_CBC:
+            self.encrypt_button.setText("Mã hóa AES-128-CBC")
+            self.visual_label.setText("Thông số mã hóa AES-128-CBC:")
+
+    def _on_generate_aes_key(self) -> None:
+        """Sinh khoa AES-128 ngau nhien (16 byte hex)."""
+        key_bytes = aes_cbc.generate_key()
+        self.aes_key_edit.setText(aes_cbc.bytes_to_hex(key_bytes))
+
+    def _on_generate_aes_iv(self) -> None:
+        """Sinh vector IV ngau nhien (16 byte hex)."""
+        iv_bytes = aes_cbc.generate_iv()
+        self.aes_iv_edit.setText(aes_cbc.bytes_to_hex(iv_bytes))
+
     def on_encrypt(self) -> None:
-        """Tao ma tran, chuan hoa, chia cap va ma hoa plaintext."""
-        key = self.key_edit.text().strip()
+        """Thuc hien ma hoa theo thuat toan duoc chon."""
+        algo = self.algo_combo.currentData()
         plaintext = self.plaintext_edit.toPlainText()
 
+        if not plaintext.strip():
+            QMessageBox.warning(self, "Thiếu Plaintext", "Hãy nhập nội dung Plaintext cần mã hóa.")
+            return
+
+        if algo == config.ALGORITHM_PLAYFAIR:
+            self._encrypt_playfair(plaintext)
+        elif algo == config.ALGORITHM_CAESAR:
+            self._encrypt_caesar(plaintext)
+        elif algo == config.ALGORITHM_AES_128_CBC:
+            self._encrypt_aes(plaintext)
+
+    def _encrypt_playfair(self, plaintext: str) -> None:
+        key = self.playfair_key_edit.text().strip()
         if not playfair.normalize_text(key):
-            QMessageBox.warning(self, "Thiếu khóa",
-                                "Khóa phải chứa ít nhất một chữ cái A-Z.")
+            QMessageBox.warning(self, "Thiếu khóa", "Khóa Playfair phải chứa ít nhất một chữ cái A-Z.")
             return
 
         try:
@@ -140,47 +259,116 @@ class SenderWindow(QMainWindow):
             QMessageBox.warning(self, "Không thể mã hóa", str(exc))
             return
 
-        self.matrix_view.setPlainText(playfair.matrix_to_string(matrix))
+        self.visual_view.setPlainText(playfair.matrix_to_string(matrix))
         self.ciphertext_view.setPlainText(ciphertext)
-        self._log(f"Plaintext chuẩn hóa : {normalized}")
-        self._log(f"Chia cặp ký tự      : {' '.join(digraphs)}")
-        self._log(f"Ciphertext          : {ciphertext}")
-        self.status_label.setText("Đã mã hóa xong, sẵn sàng gửi.")
+        self._log(f"[Playfair] Plaintext chuẩn hóa : {normalized}")
+        self._log(f"[Playfair] Chia cặp ký tự      : {' '.join(digraphs)}")
+        self._log(f"[Playfair] Ciphertext          : {ciphertext}")
+        self.status_label.setText("Đã mã hóa Playfair xong, sẵn sàng gửi.")
+
+    def _encrypt_caesar(self, plaintext: str) -> None:
+        shift = self.caesar_shift_spin.value()
+        try:
+            ciphertext = caesar.encrypt(plaintext, shift)
+            mapping_str = caesar.get_mapping_string(shift)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Không thể mã hóa", str(exc))
+            return
+
+        self.visual_view.setPlainText(mapping_str)
+        self.ciphertext_view.setPlainText(ciphertext)
+        self._log(f"[Caesar] Độ dịch k = {shift % 26} (gốc: {shift})")
+        self._log(f"[Caesar] Plaintext : {plaintext}")
+        self._log(f"[Caesar] Ciphertext: {ciphertext}")
+        self.status_label.setText(f"Đã mã hóa Caesar (k={shift % 26}) xong, sẵn sàng gửi.")
+
+    def _encrypt_aes(self, plaintext: str) -> None:
+        key_text = self.aes_key_edit.text().strip()
+        iv_text = self.aes_iv_edit.text().strip()
+
+        try:
+            key_bytes = aes_cbc.parse_bytes(key_text, config.AES_KEY_SIZE, "Khóa AES")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Khóa AES không hợp lệ", str(exc))
+            return
+
+        try:
+            iv_bytes = aes_cbc.parse_bytes(iv_text, config.AES_BLOCK_SIZE, "Vector IV")
+        except ValueError as exc:
+            QMessageBox.warning(self, "Vector IV không hợp lệ", str(exc))
+            return
+
+        try:
+            cipher_bytes = aes_cbc.encrypt(plaintext, key_bytes, iv_bytes)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Lỗi mã hóa AES", str(exc))
+            return
+
+        b64_ciphertext = aes_cbc.bytes_to_base64(cipher_bytes)
+        info_str = aes_cbc.get_aes_info_string(
+            key_bytes,
+            iv_bytes,
+            len(plaintext.encode("utf-8")),
+            len(cipher_bytes),
+        )
+
+        self._current_iv_hex = aes_cbc.bytes_to_hex(iv_bytes)
+        self.visual_view.setPlainText(info_str)
+        self.ciphertext_view.setPlainText(b64_ciphertext)
+        self._log(f"[AES-128-CBC] Khóa (Hex): {aes_cbc.bytes_to_hex(key_bytes)}")
+        self._log(f"[AES-128-CBC] IV   (Hex): {self._current_iv_hex}")
+        self._log(f"[AES-128-CBC] Ciphertext (Base64, {len(cipher_bytes)}B): {b64_ciphertext}")
+        self.status_label.setText("Đã mã hóa AES-128-CBC xong, sẵn sàng gửi.")
 
     def on_send(self) -> None:
         """Dong goi JSON va gui ciphertext sang VM2 qua TCP."""
-        key = self.key_edit.text().strip()
+        algo = self.algo_combo.currentData()
         ciphertext = self.ciphertext_view.toPlainText().strip()
         host = self.host_edit.text().strip()
         port = self.port_spin.value()
 
         if not ciphertext:
-            QMessageBox.warning(self, "Chưa có ciphertext",
-                                "Hãy bấm 'Tạo ma trận & Mã hóa' trước khi gửi.")
+            QMessageBox.warning(self, "Chưa có ciphertext", "Hãy bấm nút mã hóa trước khi gửi.")
             return
+
         try:
             validate_endpoint(host, port)
         except ValueError as exc:
             QMessageBox.warning(self, "Địa chỉ không hợp lệ", str(exc))
             return
+
         if self._sender_thread and self._sender_thread.isRunning():
-            QMessageBox.information(self, "Đang gửi",
-                                    "Đang có một phiên gửi, vui lòng đợi.")
+            QMessageBox.information(self, "Đang gửi", "Đang có một phiên gửi, vui lòng đợi.")
             return
 
-        packet = protocol.pack_message(key, ciphertext)
-        self._log(f"Gói tin JSON: {packet.decode('utf-8').strip()}")
+        # Thu thap khoa va IV phu hop theo thuat toan
+        iv = ""
+        if algo == config.ALGORITHM_PLAYFAIR:
+            key = self.playfair_key_edit.text().strip()
+        elif algo == config.ALGORITHM_CAESAR:
+            key = str(self.caesar_shift_spin.value() % 26)
+        elif algo == config.ALGORITHM_AES_128_CBC:
+            key = self.aes_key_edit.text().strip()
+            iv = self.aes_iv_edit.text().strip()
+        else:
+            QMessageBox.warning(self, "Lỗi", "Thuật toán không xác định.")
+            return
 
+        try:
+            packet = protocol.pack_message(algo, key, ciphertext, iv=iv)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Lỗi đóng gói", str(exc))
+            return
+
+        self._log(f"Gói tin JSON ({algo}): {packet.decode('utf-8').strip()}")
         self.send_button.setEnabled(False)
-        self.status_label.setText(f"Đang gửi tới {host}:{port} ...")
+        self.status_label.setText(f"Đang gửi [{algo}] tới {host}:{port} ...")
 
         self._sender_thread = SenderThread(host, port, packet, parent=self)
         self._sender_thread.log.connect(self._log)
         self._sender_thread.succeeded.connect(self._on_send_success)
         self._sender_thread.failed.connect(self._on_send_failure)
-        self._sender_thread.finished.connect(
-            lambda: self.send_button.setEnabled(True)
-        )
+        self._sender_thread.finished.connect(lambda: self.send_button.setEnabled(True))
         self._sender_thread.start()
 
     def _on_send_success(self, message: str) -> None:

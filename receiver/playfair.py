@@ -84,6 +84,26 @@ def _shift_pair(matrix: list[list[str]], pair: str, direction: int) -> str:
     return matrix[r1][c1] + matrix[r2][c2]
 
 
+def _build_pair_lut(matrix: list[list[str]], direction: int) -> dict[str, str]:
+    """Tao bang tra cuu 625 cap ky tu cho ma hoa/giai ma nhanh tren du lieu lon."""
+    pos = _position_map(matrix)
+    lut: dict[str, str] = {}
+    for ch1 in ALPHABET:
+        for ch2 in ALPHABET:
+            (r1, c1), (r2, c2) = pos[ch1], pos[ch2]
+            if r1 == r2:
+                nc1 = (c1 + direction) % MATRIX_SIZE
+                nc2 = (c2 + direction) % MATRIX_SIZE
+                lut[ch1 + ch2] = matrix[r1][nc1] + matrix[r2][nc2]
+            elif c1 == c2:
+                nr1 = (r1 + direction) % MATRIX_SIZE
+                nr2 = (r2 + direction) % MATRIX_SIZE
+                lut[ch1 + ch2] = matrix[nr1][c1] + matrix[nr2][c2]
+            else:
+                lut[ch1 + ch2] = matrix[r1][c2] + matrix[r2][c1]
+    return lut
+
+
 def encrypt(plaintext: str, key: str) -> str:
     """Ma hoa plaintext bang khoa Playfair, tra ve ciphertext."""
     matrix = build_matrix(key)
@@ -91,7 +111,8 @@ def encrypt(plaintext: str, key: str) -> str:
     if not normalized:
         raise ValueError("Plaintext khong chua ky tu chu cai nao de ma hoa.")
     digraphs = make_digraphs(normalized)
-    return "".join(_shift_pair(matrix, pair, +1) for pair in digraphs)
+    lut = _build_pair_lut(matrix, +1)
+    return "".join(lut.get(pair, _shift_pair(matrix, pair, +1)) for pair in digraphs)
 
 
 def decrypt(ciphertext: str, key: str) -> str:
@@ -102,5 +123,8 @@ def decrypt(ciphertext: str, key: str) -> str:
         raise ValueError("Ciphertext rong hoac khong hop le.")
     if len(normalized) % 2 != 0:
         raise ValueError("Ciphertext Playfair phai co do dai chan.")
-    digraphs = [normalized[i:i + 2] for i in range(0, len(normalized), 2)]
-    return "".join(_shift_pair(matrix, pair, -1) for pair in digraphs)
+    lut = _build_pair_lut(matrix, -1)
+    return "".join(
+        lut.get(normalized[i:i + 2], _shift_pair(matrix, normalized[i:i + 2], -1))
+        for i in range(0, len(normalized), 2)
+    )

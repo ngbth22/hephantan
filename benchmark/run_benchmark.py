@@ -1,0 +1,119 @@
+"""
+run_benchmark.py - Trinh dieu phoi toan bo quy trinh Benchmark:
+1. Kiem tra mang / ping test toi Receiver (neu la IP tu xa).
+2. Khoi dong server ngam (neu chay che do local) hoac ket noi server VM2.
+3. Chay 12 to hop x (1 warm-up + 30 do chinh) = 372 luot.
+4. Luu 360 mau phan tich vao CSV.
+5. Chay phan tich thong ke pandas va sinh 6 bieu do matplotlib.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import threading
+import time
+
+# Them duong dan hien tai vao sys.path
+BENCH_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BENCH_DIR)
+
+import analyze
+import client
+import server
+
+
+def perform_ping_test(host: str, count: int = 10) -> bool:
+    """Kiem tra do tre mang va ti le mat goi bang lenh ping tren Windows."""
+    print(f"[*] Dang thuc hien Ping test toi {host} ({count} goi tin) ...")
+    try:
+        cmd = ["ping", "-n", str(count), host]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=count * 2)
+        print(res.stdout)
+        if "Lost = 0 (0% loss)" in res.stdout or "0% packet loss" in res.stdout:
+            print("[+] Ping test hoan hao: 0% mat goi.")
+            return True
+        elif "100% loss" in res.stdout or "Destination host unreachable" in res.stdout:
+            print("[!] CANH BAO: Khong ping duoc toi host. Vui long kiem tra firewall hoac cau hinh mang!")
+            return False
+        else:
+            print("[!] CANH BAO: Co hien tuong mat goi. Kiem tra lai adapter mang Bridge/Host-Only.")
+            return True
+    except Exception as exc:
+        print(f"[!] Khong the thuc hien ping: {exc}")
+        return True
+
+
+def run_full_pipeline(
+    host: str = "127.0.0.1",
+    port: int = 5000,
+    results_dir: str = "benchmark/results",
+    seed: int = 42,
+    is_local: bool = True,
+) -> None:
+    """Thuc thi toan bo quy trinh benchmark."""
+    os.makedirs(results_dir, exist_ok=True)
+    csv_file = os.path.join(results_dir, "benchmark_results.csv")
+    charts_dir = os.path.join(results_dir, "charts")
+    summary_md = os.path.join(results_dir, "summary_table.md")
+
+    server_thread = None
+    stop_event = threading.Event()
+
+    if is_local or host in ("127.0.0.1", "localhost", "0.0.0.0"):
+        print("[*] Che do LOCAL: Dang khoi dong Receiver Server tren luong nen ...")
+        def start_bg_server():
+            server.run_server(host="127.0.0.1", port=port)
+
+        server_thread = threading.Thread(target=start_bg_server, daemon=True)
+        server_thread.start()
+        time.sleep(0.5)  # Cho server san sang
+    else:
+        print(f"[*] Che do REMOTE VM: Ket noi toi Receiver tai {host}:{port}")
+        perform_ping_test(host, count=10)
+
+    # 1. Chay benchmark
+    t_start = time.perf_counter()
+    client.run_benchmark(
+        host="127.0.0.1" if is_local else host,
+        port=port,
+        output_csv=csv_file,
+        seed=seed,
+    )
+    total_duration = time.perf_counter() - t_start
+
+    print(f"\n[+] Thoi gian thuc hien toan bo 372 luot benchmark: {total_duration:.2f} giay.")
+
+    # 2. Phan tich du lieu va ve bieu do
+    print("\n[*] Dang phan tich du lieu bang pandas va tao bieu do matplotlib ...")
+    df = analyze.load_and_validate(csv_file)
+    df_rates, df_stats = analyze.compute_statistics(df)
+    analyze.generate_charts(df_stats, charts_dir)
+    analyze.export_markdown_summary(df_rates, df_stats, summary_md)
+
+    print("\n============================================================")
+    print("  HOAN TAT TOAN BO TIEN TRINH BENCHMARK!")
+    print(f"  - File CSV:      {csv_file}")
+    print(f"  - Bang ket qua:  {summary_md}")
+    print(f"  - 8 Bieu do:     {charts_dir}")
+    print("============================================================")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Master Benchmark Orchestrator")
+    parser.add_argument("--host", default="127.0.0.1", help="Dia chi IP cua Receiver (mac dinh: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=5000, help="Cong TCP (mac dinh: 5000)")
+    parser.add_argument("--results-dir", default="benchmark/results", help="Thu muc luu ket qua")
+    parser.add_argument("--seed", type=int, default=42, help="Seed ngau nhien")
+    parser.add_argument("--remote", action="store_true", help="Che do ket noi toi VM2 tu xa (khong bat server local)")
+    args = parser.parse_args()
+
+    run_full_pipeline(
+        host=args.host,
+        port=args.port,
+        results_dir=args.results_dir,
+        seed=args.seed,
+        is_local=not args.remote,
+    )
