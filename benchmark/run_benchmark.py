@@ -54,7 +54,7 @@ def run_full_pipeline(
     port: int = 5000,
     results_dir: str = "benchmark/results",
     seed: int = 42,
-    is_local: bool = True,
+    is_local: bool | None = None,
 ) -> None:
     """Thuc thi toan bo quy trinh benchmark."""
     os.makedirs(results_dir, exist_ok=True)
@@ -62,25 +62,32 @@ def run_full_pipeline(
     charts_dir = os.path.join(results_dir, "charts")
     summary_md = os.path.join(results_dir, "summary_table.md")
 
+    # Tu dong phat hien che do:
+    # Neu khong truyen hoac la 127.0.0.1 / localhost -> tu chay self-test (khoi dong server ngam)
+    # Neu la IP khac -> tu chuyen sang remote (khong khoi dong server ngam)
+    clean_host = host.strip() if host else "127.0.0.1"
+    if is_local is None:
+        is_local = clean_host.lower() in ("127.0.0.1", "localhost")
+
     server_thread = None
     stop_event = threading.Event()
 
-    if is_local or host in ("127.0.0.1", "localhost", "0.0.0.0"):
-        print("[*] Che do LOCAL: Dang khoi dong Receiver Server tren luong nen ...")
+    if is_local:
+        print("[*] Che do SELF-TEST (LOCAL): Tu dong khoi dong Receiver Server noi bo tren luong nen ...")
         def start_bg_server():
-            server.run_server(host="127.0.0.1", port=port)
+            server.run_server(host="127.0.0.1", port=port, stop_event=stop_event)
 
         server_thread = threading.Thread(target=start_bg_server, daemon=True)
         server_thread.start()
         time.sleep(0.5)  # Cho server san sang
     else:
-        print(f"[*] Che do REMOTE VM: Ket noi toi Receiver tai {host}:{port}")
-        perform_ping_test(host, count=10)
+        print(f"[*] Che do REMOTE: Ket noi toi Receiver tai {clean_host}:{port} (khong bat server noi bo) ...")
+        perform_ping_test(clean_host, count=10)
 
     # 1. Chay benchmark
     t_start = time.perf_counter()
     client.run_benchmark(
-        host="127.0.0.1" if is_local else host,
+        host=clean_host,
         port=port,
         output_csv=csv_file,
         seed=seed,
@@ -106,11 +113,19 @@ def run_full_pipeline(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master Benchmark Orchestrator")
-    parser.add_argument("--host", default="127.0.0.1", help="Dia chi IP cua Receiver (mac dinh: 127.0.0.1)")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Dia chi IP cua Receiver (mac dinh: 127.0.0.1 -> tu chay self-test; neu la IP khac -> tu dong chuyen sang remote)",
+    )
     parser.add_argument("--port", type=int, default=5000, help="Cong TCP (mac dinh: 5000)")
     parser.add_argument("--results-dir", default="benchmark/results", help="Thu muc luu ket qua")
     parser.add_argument("--seed", type=int, default=42, help="Seed ngau nhien")
-    parser.add_argument("--remote", action="store_true", help="Che do ket noi toi VM2 tu xa (khong bat server local)")
+    parser.add_argument(
+        "--remote",
+        action="store_true",
+        help="Cuong che che do remote (khong bat server noi bo du la 127.0.0.1)",
+    )
     parser.add_argument("--gui", action="store_true", help="Mo giao dien do hoa Benchmark GUI")
     args = parser.parse_args()
 
@@ -119,10 +134,13 @@ if __name__ == "__main__":
         gui.main()
         sys.exit(0)
 
+    # Neu nguoi dung truyen flag --remote ro rang, cuong che is_local=False, con khong de ham tu xac dinh theo --host
+    is_local_flag = False if args.remote else None
+
     run_full_pipeline(
         host=args.host,
         port=args.port,
         results_dir=args.results_dir,
         seed=args.seed,
-        is_local=not args.remote,
+        is_local=is_local_flag,
     )
