@@ -1,277 +1,100 @@
-# Demo mã hóa và truyền tin đa thuật toán (Playfair, Caesar, AES-128-CBC) giữa hai máy ảo Windows
+# Hệ thống Mã hóa & Benchmark Truyền tin Đa Thuật toán
 
-Ứng dụng demo mô phỏng đầy đủ quá trình **mã hóa → truyền tin → giải mã** giữa hai máy ảo Windows với 3 thuật toán mật mã phổ biến:
+Ứng dụng mô phỏng toàn diện quy trình **Mã hóa → Truyền tin TCP → Giải mã** và hệ thống **Benchmark hiệu năng mạng** giữa hai máy ảo (Windows / Linux) với 3 thuật toán: **Playfair (5×5)**, **Caesar**, và **AES-128-CBC** (đệm PKCS#7 & vector IV ngẫu nhiên).
 
-1. **Playfair Cipher**: Thuật toán mã hóa đa ký tự cổ điển dùng ma trận 5×5.
-2. **Caesar Cipher**: Thuật toán mã hóa dịch chuyển cổ điển (hỗ trợ dịch $k$ tùy ý, ROT3, ROT13).
-3. **AES-128-CBC**: Chuẩn mã hóa khối hiện đại đối xứng 128-bit với chế độ Cipher Block Chaining (CBC), đệm PKCS#7 và vector khởi tạo IV ngẫu nhiên.
+---
 
-Hệ thống gồm 2 thành phần:
-- **VM1 – Sender** (`sender/`): chọn thuật toán, cấu hình khóa/IV, nhập tin nhắn, mã hóa, xem trực quan hóa và gửi gói tin qua TCP.
-- **VM2 – Receiver** (`receiver/`): chạy TCP Server lắng nghe, tự động nhận biết thuật toán từ gói tin JSON, giải mã và hiển thị plaintext ban đầu cùng log truyền nhận.
+## ⚡ Khởi động nhanh (Quick Start)
 
-## Công nghệ
-
-| Thành phần | Công nghệ |
-|---|---|
-| Ngôn ngữ | Python 3.12 / 3.13 |
-| Giao diện | PySide6 (Qt for Python) |
-| Mật mã học | `cryptography` (chuẩn công nghiệp cho AES-128-CBC) |
-| Truyền tin | TCP Socket (Non-blocking trên QThread) |
-| Định dạng gói tin | JSON (newline-delimited UTF-8) |
-| Benchmark & Đo đạc | `psutil` (giám sát CPU/RAM), `pandas`, `matplotlib`, `numpy` |
-
-## Cấu trúc dự án
-
-```
-hephantan/
-├── sender/            # VM1 - máy gửi
-│   ├── main.py        # khởi động chương trình Sender
-│   ├── gui.py         # giao diện PySide6 hỗ trợ 3 thuật toán
-│   ├── playfair.py    # thuật toán mã hóa/giải mã Playfair
-│   ├── caesar.py      # thuật toán mã hóa/giải mã Caesar
-│   ├── aes_cbc.py     # thuật toán mã hóa/giải mã AES-128-CBC
-│   ├── network.py     # TCP Client (chạy trên QThread)
-│   ├── protocol.py    # đóng gói / giải gói tin JSON (Version 2)
-│   └── config.py      # tham số cấu hình tập trung
-├── receiver/          # VM2 - máy nhận
-│   ├── main.py        # khởi động chương trình Receiver
-│   ├── gui.py         # giao diện PySide6 tự động giải mã đa thuật toán
-│   ├── playfair.py    # thuật toán mã hóa/giải mã Playfair
-│   ├── caesar.py      # thuật toán mã hóa/giải mã Caesar
-│   ├── aes_cbc.py     # thuật toán mã hóa/giải mã AES-128-CBC
-│   ├── network.py     # TCP Server (chạy trên QThread)
-│   ├── protocol.py    # đóng gói / giải gói tin JSON (Version 2)
-│   └── config.py      # tham số cấu hình tập trung
-├── benchmark/         # Hệ thống đo đạc hiệu năng mã hóa & truyền mạng
-│   ├── gui.py               # Giao diện đồ họa PySide6 điều khiển Benchmark
-│   ├── run_benchmark.py     # Điều phối quy trình benchmark tự động (hỗ trợ cờ --gui)
-│   ├── client.py            # Sender benchmark client
-│   ├── server.py            # Receiver benchmark server
-│   ├── common.py            # Giao thức framing nhị phân & cấu hình thực nghiệm
-│   ├── analyze.py           # Thống kê pandas & vẽ 8 biểu đồ matplotlib
-│   └── results/             # Kết quả đo đạc thực nghiệm
-│       ├── benchmark_results.csv   # 360 mẫu dữ liệu thô (18 cột)
-│       ├── detailed_statistics.csv # Thống kê chi tiết (Mean, Std, Median)
-│       ├── summary_table.md        # Bảng tổng hợp Markdown
-│       └── charts/                 # 8 biểu đồ phân tích độ phân giải cao 300 DPI
-│           ├── 01_encryption_time.png
-│           ├── 02_decryption_time.png
-│           ├── 03_rtt.png
-│           ├── 04_total_time.png
-│           ├── 05_sizes.png
-│           ├── 06_throughput.png
-│           ├── 07_cpu_usage.png
-│           └── 08_ram_usage.png
-├── tests/             # Bộ kiểm thử tự động toàn diện (36 test cases)
-│   ├── test_ciphers.py            # Unit tests cho Playfair, Caesar, AES, Protocol
-│   ├── test_integration.py        # Integration tests qua TCP Socket
-│   ├── test_gui.py                # Kiểm thử giao diện Sender/Receiver PySide6
-│   ├── test_benchmark_gui.py      # Kiểm thử giao diện Benchmark GUI PySide6
-│   └── test_benchmark_pipeline.py # Kiểm thử auto-detection và pipeline benchmark
-├── docs/              # Tài liệu báo cáo kỹ thuật
-│   ├── bao-cao-trien-khai.md # Báo cáo kỹ thuật triển khai theo ISO/IEC/IEEE 26514:2022
-│   └── bao-cao-benchmark.md  # Báo cáo thực nghiệm hiệu năng & phân tích 8 biểu đồ
-├── benchmark_gui.py   # Trình khởi chạy nhanh Benchmark GUI tại thư mục gốc
-├── requirements.txt
-└── README.md
-```
-
-## Cài đặt (trên cả hai máy ảo)
-
+### 1. Cài đặt môi trường
 ```powershell
-# Cài đặt các thư viện phụ thuộc
 pip install -r requirements.txt
 ```
 
-## Chạy chương trình
+### 2. Chạy ứng dụng Demo Truyền nhận (GUI)
+| Máy | Vai trò | Lệnh khởi động | Mô tả |
+|---|---|---|---|
+| **VM2** | **Receiver** | `python receiver/main.py` | Lắng nghe TCP (`0.0.0.0:5000`), tự giải mã & hiển thị log |
+| **VM1** | **Sender** | `python sender/main.py` | Chọn thuật toán, cấu hình khóa/IV, nhập IP VM2 & gửi tin |
 
-### 1. Trên VM2 (Receiver) – chạy trước:
+### 3. Chạy Benchmark Hiệu năng (372 lượt đo)
+Hệ thống tự động đo: *Thời gian mã hóa/giải mã, RTT, Throughput, CPU (%) và RAM (RSS/Delta)* trên 4 thuật toán (`None`, `Caesar`, `Playfair`, `AES-128-CBC`) × 3 kích thước payload (`1 KB`, `100 KB`, `1 MB`).
 
-```powershell
-cd receiver
-python main.py
-```
-
-- Chọn IP lắng nghe (mặc định `0.0.0.0` – mọi card mạng), Port (mặc định `5000`).
-- Bấm **Khởi động Server**.
-
-### 2. Trên VM1 (Sender):
-
-```powershell
-cd sender
-python main.py
-```
-
-- Chọn thuật toán trong danh sách:
-  - **Playfair (Ma trận 5×5)**: Nhập khóa (ví dụ `MONARCHY`), nhập tin nhắn, bấm **Tạo ma trận & Mã hóa**.
-  - **Caesar (Dịch chuyển)**: Chọn độ dịch $k$ (ví dụ `k = 3` hoặc bấm nút `ROT13`), nhập tin nhắn, bấm **Mã hóa Caesar**.
-  - **AES-128-CBC (Mã hóa khối)**: Nhập khóa 16 byte (hoặc bấm **Tạo khóa ngẫu nhiên**), vector IV 16 byte (hoặc bấm **Tạo IV ngẫu nhiên**), nhập tin nhắn, bấm **Mã hóa AES-128-CBC**.
-- Nhập **IP của VM2** và Port, bấm **Gửi ciphertext**.
-
-VM2 sẽ tự động nhận gói tin, hiển thị thuật toán tương ứng, khóa, IV, ma trận/thông số giải mã, plaintext giải mã và log chi tiết.
-
-## Chạy kiểm thử tự động
-
-Dự án tích hợp bộ kiểm thử tự động toàn diện:
-
-```powershell
-# Chạy toàn bộ 36 test cases
-python -m unittest discover -s tests -p "test_*.py"
-```
-
-## Định dạng gói tin (protocol.py - Version 2)
-
-Mỗi gói tin là một dòng JSON UTF-8 kết thúc bằng ký tự xuống dòng `\n` (newline-delimited JSON).
-
-### 1. Gói tin Playfair:
-```json
-{
-  "type": "crypto_message",
-  "version": 2,
-  "algorithm": "playfair",
-  "key": "MONARCHY",
-  "ciphertext": "GATLMZCLRQTX",
-  "timestamp": "2026-09-12T12:30:00"
-}
-```
-
-### 2. Gói tin Caesar:
-```json
-{
-  "type": "crypto_message",
-  "version": 2,
-  "algorithm": "caesar",
-  "key": "3",
-  "ciphertext": "Khoor, Zruog!",
-  "timestamp": "2026-09-12T12:30:00"
-}
-```
-
-### 3. Gói tin AES-128-CBC:
-```json
-{
-  "type": "crypto_message",
-  "version": 2,
-  "algorithm": "aes-128-cbc",
-  "key": "2b7e151628aed2a6abf7158809cf4f3c",
-  "iv": "000102030405060708090a0b0c0d0e0f",
-  "ciphertext": "mF3bO8k0V29Z1X9L+r4Xgw==",
-  "timestamp": "2026-09-12T12:30:00"
-}
-```
-
-> **Tính tương thích ngược:** Hệ thống vẫn nhận diện và xử lý bình thường các gói tin phiên bản 1 (`"type": "playfair_message"`).
-
-## Quy ước các thuật toán
-
-### 1. Playfair Cipher
-- Bảng chữ cái 25 ký tự: gộp **J → I**.
-- Chuẩn hóa: viết hoa, loại bỏ ký tự không phải A–Z.
-- Cặp trùng ký tự: chèn **X** vào giữa; độ dài lẻ: thêm **X** vào cuối.
-- Cùng hàng → dịch phải (mã hóa) / dịch trái (giải mã).
-- Cùng cột → dịch xuống (mã hóa) / dịch lên (giải mã).
-- Khác hàng khác cột → hoán đổi cột (quy tắc hình chữ nhật).
-
-### 2. Caesar Cipher
-- Dịch chuyển theo số học modulo 26: $C = (P + k) \pmod{26}$.
-- Hỗ trợ chữ hoa A–Z và chữ thường a–z.
-- Giữ nguyên khoảng trắng, chữ số và các ký tự đặc biệt.
-- Giải mã: dịch ngược lại theo $-k \pmod{26}$.
-
-### 3. AES-128-CBC
-- Độ dài khóa: 128 bit (16 byte). Chấp nhận chuỗi văn bản 16 ký tự hoặc Hex 32 ký tự.
-- Kích thước khối: 128 bit (16 byte).
-- Vector khởi tạo (IV): 16 byte, truyền kèm trong gói tin (Hex).
-- Đệm: PKCS#7 (chuẩn mật mã cho mã hóa khối).
-- Plaintext hỗ trợ đầy đủ UTF-8 (tiếng Việt có dấu, ký tự đặc biệt).
-- Ciphertext truyền qua mạng dưới dạng Base64.
-
-## Cấu hình mạng giữa hai máy ảo
-
-1. Đặt hai VM cùng một mạng (ví dụ Internal Network / Host-only), gán IP tĩnh cùng dải, ví dụ VM1 = `192.168.1.1`, VM2 = `192.168.1.2`.
-2. Kiểm tra kết nối: từ VM1 chạy `ping 192.168.1.2`.
-3. Kiểm tra TCP: sau khi VM2 khởi động server, từ VM1 chạy
-   `Test-NetConnection 192.168.1.2 -Port 5000`.
-4. Mở port trên Windows Firewall của VM2 nếu bị chặn:
-
-```powershell
-New-NetFirewallRule -DisplayName "Crypto Receiver" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow
-```
-
-## Chạy Benchmark Hệ thống (12 tổ hợp × 31 lượt = 372 lượt)
-
-Hệ thống tích hợp sẵn bộ kịch bản đo đạc hiệu năng mạng tự động theo chuẩn thực nghiệm:
-- 4 thuật toán: `None`, `Caesar`, `Playfair`, `AES-128-CBC`
-- 3 kích thước: `1 KB`, `100 KB`, `1 MB`
-- 1 lượt warm-up + 30 lượt đo chính per tổ hợp = 372 lượt thực thi, 360 mẫu phân tích.
-- Thu thập toàn diện: Thời gian mã hóa/giải mã, độ trễ RTT, tổng thời gian, thông lượng (throughput), mức chiếm dụng CPU (%) và bộ nhớ RAM (RSS & Delta).
-
-### Cách 1: Chạy qua Giao diện Đồ họa Benchmark GUI (Khuyến nghị):
-```powershell
-# Chạy trình khởi chạy nhanh tại thư mục gốc
-python benchmark_gui.py
-
-# Hoặc dùng cờ --gui
-python benchmark/run_benchmark.py --gui
-```
-> **Mẹo:** Bạn cũng có thể bấm trực tiếp nút **"🚀 Mở Benchmark GUI"** ngay trên thanh điều khiển của cả **Sender GUI** (`sender/main.py`) và **Receiver GUI** (`receiver/main.py`).
-
-**Các tính năng nổi bật trên Benchmark GUI:**
-- **3 chế độ linh hoạt**: Tự động toàn bộ (Local All-in-One Self-Test), Sender Client kết nối VM2 từ xa (tích hợp nút Ping Test), hoặc Receiver Server lắng nghe.
-- **Thay đổi IP linh hoạt**: Chuyển sang tab *Benchmark Client* hoặc *Local Mode*, nhập IP máy Receiver đích vào ô **IP Receiver / Host** (ví dụ `192.168.1.50`) và Port (mặc định `5000`).
-- **Tùy chọn kịch bản**: Tự do chọn/bỏ chọn từng thuật toán (`None`, `Caesar`, `Playfair`, `AES-128-CBC`), kích thước (`1 KB`, `100 KB`, `1 MB`), số lần đo chính và warm-up.
-- **Theo dõi trực tiếp**: Thanh tiến trình `QProgressBar`, 4 thẻ tóm tắt (Metric Cards), bảng dữ liệu thời gian thực cuộn theo từng lượt đo (kèm % CPU, RAM RSS & Delta).
-- **Tab Xem 8 Biểu đồ**: Xem trực tiếp 8 biểu đồ phân tích 300 DPI ngay trong ứng dụng, có nút chuyển ảnh và mở thư mục ảnh gốc.
-- **Tab Bảng Thống kê**: Xem bảng số liệu trung bình/trung vị và nút mở nhanh file CSV / báo cáo.
-
-### Cách 2: Chạy qua Dòng lệnh CLI (`run_benchmark.py`):
-
-Chương trình tích hợp **cơ chế tự động nhận diện chế độ thông minh theo tham số `--host`**:
-
-1. **Chế độ Self-Test nội bộ (Mặc định khi không truyền IP hoặc truyền 127.0.0.1)**:
-   ```powershell
-   python benchmark/run_benchmark.py
-   # hoặc: python benchmark/run_benchmark.py --host 127.0.0.1
-   ```
-   > Chương trình tự khởi động Receiver ngầm trên thread nền, tự đo đạc 372 lượt trên máy cục bộ, tự phân tích và xuất 8 biểu đồ vào `benchmark/results/charts/`.
-
-2. **Chế độ Remote từ xa (Đổi sang IP của máy ảo Receiver khác)**:
-   ```powershell
-   # Kết nối tới Receiver tại IP máy ảo khác (ví dụ: 192.168.1.50)
-   python benchmark/run_benchmark.py --host 192.168.1.50
-
-   # Tùy chỉnh thêm cổng port hoặc thư mục kết quả:
-   python benchmark/run_benchmark.py --host 192.168.1.50 --port 5000 --results-dir benchmark/results
-   ```
-   > Khi truyền IP khác `127.0.0.1`, chương trình **tự động chuyển sang chế độ Remote**: không bật server nội bộ nữa, thực hiện Ping 10 gói kiểm tra đường truyền và gửi dữ liệu trực tiếp tới Receiver từ xa.
-
-3. **Cờ cưỡng chế `--remote` (Tùy chọn)**:
-   ```powershell
-   python benchmark/run_benchmark.py --host 127.0.0.1 --remote
-   ```
-   > Dùng khi bạn đã tự chạy sẵn một Receiver độc lập trên máy và muốn script chỉ đóng vai trò client đo đạc mà không tự khởi tạo thêm server nền.
-
-### Cách 3: Chạy phân tán thủ công từng thành phần trên 2 máy ảo:
-- **Trên VM2 (Receiver)**:
+* **Cách 1 - Giao diện đồ họa (Khuyến nghị):**
   ```powershell
-  python benchmark/server.py --host 0.0.0.0 --port 5000
+  python benchmark_gui.py
+  # hoặc: python benchmark/run_benchmark.py --gui
   ```
-- **Trên VM1 (Sender)**:
+  *(Có sẵn nút mở Benchmark GUI trực tiếp từ thanh công cụ của Sender/Receiver GUI).*
+
+* **Cách 2 - Dòng lệnh CLI (Tự động nhận diện chế độ theo `--host`):**
   ```powershell
-  python benchmark/client.py --host 192.168.1.2 --port 5000 --output benchmark/results/benchmark_results.csv
-  python benchmark/analyze.py --csv benchmark/results/benchmark_results.csv
+  # Chế độ Self-Test (Mặc định máy cục bộ: tự bật Receiver ngầm, đo & vẽ 8 biểu đồ)
+  python benchmark/run_benchmark.py
+
+  # Chế độ Remote (Đổi IP sang máy ảo khác: tự ping kiểm tra kết nối & gửi trực tiếp)
+  python benchmark/run_benchmark.py --host 192.168.1.50 [--port 5000]
   ```
 
 ---
 
-## Tài liệu kỹ thuật dự án
+## 📁 Cấu trúc dự án
 
-Toàn bộ tài liệu chi tiết được lưu trữ trong thư mục `docs/` và `benchmark/results/`:
+```text
+hephantan/
+├── sender/             # VM1: Giao diện PySide6, TCP Client & mã hóa (Playfair, Caesar, AES)
+├── receiver/           # VM2: Giao diện PySide6, TCP Server & giải mã tự động
+├── benchmark/          # Hệ thống đo đạc hiệu năng mạng
+│   ├── gui.py          # Benchmark GUI (PySide6)
+│   ├── run_benchmark.py# Điều phối benchmark tự động (CLI / GUI)
+│   ├── client.py & server.py # Core TCP benchmark framing
+│   ├── analyze.py      # Thống kê pandas & vẽ biểu đồ matplotlib
+│   └── results/        # Dữ liệu 360 mẫu CSV, bảng tổng hợp & 8 biểu đồ 300 DPI
+├── tests/              # Bộ 36 test cases tự động (Ciphers, Network TCP, GUI, Pipeline)
+├── docs/               # Báo cáo triển khai ISO 26514 & báo cáo phân tích thực nghiệm
+├── benchmark_gui.py    # Launcher nhanh cho Benchmark GUI
+└── requirements.txt    # Thư viện phụ thuộc (PySide6, cryptography, psutil, pandas, matplotlib)
+```
 
-1. [**Báo cáo Triển khai Hệ thống (docs/bao-cao-trien-khai.md)**](docs/bao-cao-trien-khai.md): Báo cáo kỹ thuật chuẩn ISO/IEC/IEEE 26514:2022 về kiến trúc hệ thống, giao thức mạng, đặc tả thuật toán và kiểm thử.
-2. [**Báo cáo Thực nghiệm Benchmark (docs/bao-cao-benchmark.md)**](docs/bao-cao-benchmark.md): Báo cáo đầy đủ về kịch bản đo 372 lượt, bảng thống kê thời gian/băng thông/CPU/RAM và phân tích chuyên sâu 8 biểu đồ trực quan.
-3. [**Bảng tổng hợp số liệu Benchmark (benchmark/results/summary_table.md)**](benchmark/results/summary_table.md): Bảng số liệu thống kê trung bình và trung vị của toàn bộ 360 mẫu phân tích.
-4. [**Thư mục 8 biểu đồ trực quan (benchmark/results/charts/)**](benchmark/results/charts/): Chứa các biểu đồ phân giải cao (300 DPI) về thời gian, RTT, kích thước gói tin, thông lượng, CPU usage và RAM usage.
+---
 
-> **Lưu ý:** Đây là ứng dụng demo phục vụ học tập. Khóa được gửi kèm trong gói tin để VM2 giải mã tự động phục vụ trực quan hóa, điều này không an toàn trong môi trường thực tế nếu chưa kết hợp trao đổi khóa bất đối xứng (như RSA/Diffie-Hellman).
+## 🧪 Kiểm thử tự động (Unit & Integration Tests)
+
+Dự án bao gồm **36 test cases** kiểm tra toàn diện logic mật mã, giao thức mạng và giao diện:
+```powershell
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+---
+
+## 📡 Giao thức truyền tin (JSON Version 2)
+
+Dữ liệu truyền qua TCP Socket dưới dạng chuỗi JSON kết thúc bằng `\n` (`utf-8`):
+
+| Thuật toán | Gói tin mẫu (JSON) |
+|---|---|
+| **Playfair** | `{"type":"crypto_message","version":2,"algorithm":"playfair","key":"MONARCHY","ciphertext":"...","timestamp":"..."}` |
+| **Caesar** | `{"type":"crypto_message","version":2,"algorithm":"caesar","key":"3","ciphertext":"...","timestamp":"..."}` |
+| **AES-128-CBC** | `{"type":"crypto_message","version":2,"algorithm":"aes-128-cbc","key":"<hex32>","iv":"<hex32>","ciphertext":"<base64>","timestamp":"..."}` |
+
+*(Hệ thống tự động tương thích ngược với gói tin Version 1).*
+
+---
+
+## ⚙️ Cấu hình mạng giữa 2 máy ảo
+
+1. Thiết lập 2 VM cùng mạng **Host-only** hoặc **Internal Network** (ví dụ: VM1: `192.168.1.1`, VM2: `192.168.1.2`).
+2. Kiểm tra thông mạng: `ping 192.168.1.2`.
+3. Mở port `5000` trên Windows Firewall của VM2 (nếu bị chặn):
+   ```powershell
+   New-NetFirewallRule -DisplayName "Crypto Receiver" -Direction Inbound -Protocol TCP -LocalPort 5000 -Action Allow
+   ```
+
+---
+
+## 📚 Tài liệu kỹ thuật chi tiết
+
+- 📑 [**Báo cáo Triển khai Hệ thống (ISO/IEC/IEEE 26514:2022)**](docs/bao-cao-trien-khai.md)
+- 📊 [**Báo cáo Thực nghiệm Benchmark & Phân tích 8 Biểu đồ**](docs/bao-cao-benchmark.md)
+- 📈 [**Bảng Thống kê Số liệu Thực nghiệm**](benchmark/results/summary_table.md)
+- 🖼️ [**Thư mục 8 Biểu đồ phân giải cao (300 DPI)**](benchmark/results/charts/)
