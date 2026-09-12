@@ -26,16 +26,19 @@ import server
 
 
 def perform_ping_test(host: str, count: int = 10) -> bool:
-    """Kiem tra do tre mang va ti le mat goi bang lenh ping tren Windows."""
+    """Kiem tra do tre mang va ti le mat goi bang lenh ping (ho tro ca Windows va Linux)."""
+    import platform
     print(f"[*] Dang thuc hien Ping test toi {host} ({count} goi tin) ...")
     try:
-        cmd = ["ping", "-n", str(count), host]
+        flag = "-n" if platform.system().lower() == "windows" else "-c"
+        cmd = ["ping", flag, str(count), host]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=count * 2)
         print(res.stdout)
-        if "Lost = 0 (0% loss)" in res.stdout or "0% packet loss" in res.stdout:
+        out = res.stdout.lower()
+        if "0% loss" in out or "0% packet loss" in out or "0.0% packet loss" in out:
             print("[+] Ping test hoan hao: 0% mat goi.")
             return True
-        elif "100% loss" in res.stdout or "Destination host unreachable" in res.stdout:
+        elif "100% loss" in out or "100% packet loss" in out or "unreachable" in out:
             print("[!] CANH BAO: Khong ping duoc toi host. Vui long kiem tra firewall hoac cau hinh mang!")
             return False
         else:
