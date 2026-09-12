@@ -44,11 +44,13 @@ class TestBenchmarkGUI(unittest.TestCase):
         self.assertEqual(self.window.tabs.tabText(2), "📋 Bảng Thống kê & Báo cáo")
 
     def test_mode_switching(self):
-        """Kiem tra chuyen doi che do Local / Sender / Server."""
+        """Kiem tra chuyen doi che do Local / Sender Remote va loai bo Receiver Server."""
         # Mac dinh la Local
         self.assertTrue(self.window.radio_local.isChecked())
         self.assertEqual(self.window.edit_host.text(), "127.0.0.1")
         self.assertFalse(self.window.edit_host.isEnabled())
+        self.assertFalse(self.window.btn_ping.isEnabled())
+        self.assertIn("LOCAL", self.window.btn_start.text())
 
         # Chuyen sang Sender Remote
         self.window.radio_sender.setChecked(True)
@@ -57,12 +59,15 @@ class TestBenchmarkGUI(unittest.TestCase):
         self.assertTrue(self.window.btn_ping.isEnabled())
         self.assertIn("SENDER", self.window.btn_start.text())
 
-        # Chuyen sang Receiver Server
-        self.window.radio_server.setChecked(True)
-        self.window._on_mode_changed(3)
-        self.assertEqual(self.window.edit_host.text(), "0.0.0.0")
+        # Chuyen lai ve Local
+        self.window.radio_local.setChecked(True)
+        self.window._on_mode_changed(1)
+        self.assertEqual(self.window.edit_host.text(), "127.0.0.1")
         self.assertFalse(self.window.edit_host.isEnabled())
-        self.assertIn("SERVER", self.window.btn_start.text())
+        self.assertFalse(self.window.btn_ping.isEnabled())
+
+        # Kiem tra radio_server da bi loai bo hoan toan khoi GUI
+        self.assertFalse(hasattr(self.window, "radio_server"))
 
     def test_client_progress_updates_table_and_cards(self):
         """Kiem tra cap nhat tien trinh va chen dong vao bang live."""
