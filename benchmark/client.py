@@ -45,30 +45,42 @@ def run_benchmark(
     port: int = 5000,
     output_csv: str = "benchmark/results/benchmark_results.csv",
     seed: int | None = 42,
+    algorithms: list[str] | None = None,
+    sizes: list[int] | None = None,
+    benchmark_runs: int = BENCHMARK_RUNS,
+    warmup_runs: int = WARMUP_RUNS,
+    progress_callback: any = None,
+    stop_requested: any = None,
 ) -> str:
     """
     Thuc hien toan bo kich ban benchmark:
-    - 12 to hop (4 thuat toan x 3 size)
-    - Tron ngau nhien thu tu 12 to hop MOT LAN DUY NHAT bang random.shuffle()
-    - Moi to hop: 1 warm-up + 30 lan do chinh
-    - Ghi ket qua 360 mau vao CSV
+    - 12 to hop (hoac danh sach tuy chon)
+    - Tron ngau nhien thu tu cac to hop MOT LAN DUY NHAT bang random.shuffle()
+    - Moi to hop: warmup_runs + benchmark_runs lan do chinh
+    - Ghi ket qua vao CSV
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_csv)), exist_ok=True)
 
-    # 1. Tao danh sach 12 to hop va shuffle mot lan duy nhat
-    combinations = [(algo, sz) for algo in ALGORITHMS for sz in SIZES]
+    active_algos = algorithms if algorithms is not None else ALGORITHMS
+    active_sizes = sizes if sizes is not None else SIZES
+
+    # 1. Tao danh sach to hop va shuffle mot lan duy nhat
+    combinations = [(algo, sz) for algo in active_algos for sz in active_sizes]
     if seed is not None:
         random.seed(seed)
     random.shuffle(combinations)
 
+    total_executions = len(combinations) * (warmup_runs + benchmark_runs)
+    total_analysis_samples = len(combinations) * benchmark_runs
+
     print("============================================================")
     print("  KHOI DONG BENCHMARK MA HOA MANG SENDER -> RECEIVER")
     print(f"  Dich den: {host}:{port}")
-    print(f"  Tong to hop: {len(combinations)} | Warm-up/to hop: {WARMUP_RUNS} | Mau/to hop: {BENCHMARK_RUNS}")
-    print(f"  Tong thuc thi: {len(combinations) * (WARMUP_RUNS + BENCHMARK_RUNS)} luot (372 luot)")
-    print(f"  Mau phan tich: {len(combinations) * BENCHMARK_RUNS} mau (360 mau)")
+    print(f"  Tong to hop: {len(combinations)} | Warm-up/to hop: {warmup_runs} | Mau/to hop: {benchmark_runs}")
+    print(f"  Tong thuc thi: {total_executions} luot")
+    print(f"  Mau phan tich: {total_analysis_samples} mau")
     print("============================================================")
-    print("Thu tu chay 12 to hop sau khi shuffle:")
+    print("Thu tu chay cac to hop sau khi shuffle:")
     for idx, (algo, sz) in enumerate(combinations, 1):
         print(f"  {idx:02d}. {algo:12s} - {sz // 1024:4d} KB ({sz} B)")
     print("------------------------------------------------------------")
@@ -81,14 +93,21 @@ def run_benchmark(
 
     csv_rows = []
     run_id_counter = 1
+    executed_counter = 0
 
     try:
         total_combo = len(combinations)
         for c_idx, (algo, size_bytes) in enumerate(combinations, 1):
+            if stop_requested and stop_requested():
+                print("[*] Nhan tin hieu dung tu nguoi dung.")
+                break
+
             print(f"\n>>> [To hop {c_idx:02d}/{total_combo:02d}] {algo} - {size_bytes} Byte")
 
             # A. Warm-up run (loai khoi thong ke)
-            for w_idx in range(WARMUP_RUNS):
+            for w_idx in range(warmup_runs):
+                if stop_requested and stop_requested():
+                    break
                 plain = generate_plaintext(size_bytes)
                 if algo == ALGO_NONE:
                     cipher_bytes = plain.encode("utf-8")
@@ -108,10 +127,24 @@ def run_benchmark(
 
                 send_frame(sock, algo, size_bytes, 0, True, packet_bytes)
                 recv_ack(sock)
+                executed_counter += 1
+                if progress_callback:
+                    progress_callback({
+                        "is_warmup": True,
+                        "current_run": executed_counter,
+                        "total_runs": total_executions,
+                        "combo_idx": c_idx,
+                        "total_combos": total_combo,
+                        "algo": algo,
+                        "size_bytes": size_bytes,
+                        "row": None,
+                    })
                 print(f"    [Warm-up OK] Da chay xong 1 luot khoi dong cho {algo} {size_bytes}B")
 
-            # B. 30 lan do chinh
-            for m_idx in range(1, BENCHMARK_RUNS + 1):
+            # B. Cac lan do chinh
+            for m_idx in range(1, benchmark_runs + 1):
+                if stop_requested and stop_requested():
+                    break
                 plain = generate_plaintext(size_bytes)
 
                 # 1. Do thoi gian ma hoa (encryption_ms), CPU va RAM
@@ -190,10 +223,22 @@ def run_benchmark(
                     "success": success,
                 }
                 csv_rows.append(row)
+                executed_counter += 1
+                if progress_callback:
+                    progress_callback({
+                        "is_warmup": False,
+                        "current_run": executed_counter,
+                        "total_runs": total_executions,
+                        "combo_idx": c_idx,
+                        "total_combos": total_combo,
+                        "algo": algo,
+                        "size_bytes": size_bytes,
+                        "row": row,
+                    })
 
-                if m_idx % 10 == 0 or m_idx == BENCHMARK_RUNS:
+                if m_idx % 10 == 0 or m_idx == benchmark_runs:
                     print(
-                        f"    Run {m_idx:02d}/30 (ID:{run_id_counter:03d}) | "
+                        f"    Run {m_idx:02d}/{benchmark_runs} (ID:{run_id_counter:03d}) | "
                         f"Enc: {encryption_ms:6.2f}ms | Dec: {decrypt_ms:6.2f}ms | "
                         f"RTT: {rtt_ms:6.2f}ms | Tot: {total_ms:6.2f}ms | "
                         f"CPU: {enc_cpu_pct:4.1f}%/{dec_cpu_pct:4.1f}% | "
@@ -227,13 +272,13 @@ def run_benchmark(
         "dec_ram_delta_kb",
         "success",
     ]
-    with open(output_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(csv_rows)
-
-    print("------------------------------------------------------------")
-    print(f"[+] Hoan tat benchmark! Da luu {len(csv_rows)} mau vao: {output_csv}")
+    if len(csv_rows) > 0:
+        with open(output_csv, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+        print("------------------------------------------------------------")
+        print(f"[+] Hoan tat benchmark! Da luu {len(csv_rows)} mau vao: {output_csv}")
     return output_csv
 
 

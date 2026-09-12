@@ -9,6 +9,9 @@ Ciphertext, cau hinh mang va nhat ky truyen tin.
 
 from __future__ import annotations
 
+import os
+import sys
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -66,6 +69,14 @@ class SenderWindow(QMainWindow):
         self.algo_combo.addItem("AES-128-CBC (Mã hóa khối 128-bit)", config.ALGORITHM_AES_128_CBC)
         self.algo_combo.currentIndexChanged.connect(self._on_algo_changed)
         algo_row.addWidget(self.algo_combo, stretch=1)
+
+        self.btn_open_benchmark = QPushButton("🚀 Mở Benchmark GUI")
+        self.btn_open_benchmark.setStyleSheet(
+            "background-color: #0284c7; color: white; font-weight: bold; padding: 4px 10px; border-radius: 4px;"
+        )
+        self.btn_open_benchmark.clicked.connect(self._on_open_benchmark_gui)
+        algo_row.addWidget(self.btn_open_benchmark)
+
         input_layout.addLayout(algo_row)
 
         # Stacked widget cho phan nhap khoa / tham so rieng
@@ -382,3 +393,14 @@ class SenderWindow(QMainWindow):
 
     def _log(self, line: str) -> None:
         self.log_view.appendPlainText(line)
+
+    def _on_open_benchmark_gui(self) -> None:
+        try:
+            bench_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "benchmark")
+            if bench_dir not in sys.path:
+                sys.path.insert(0, bench_dir)
+            import gui as bench_gui
+            self._bench_win = bench_gui.BenchmarkWindow()
+            self._bench_win.show()
+        except Exception as exc:
+            QMessageBox.warning(self, "Lỗi", f"Không thể mở Benchmark GUI: {exc}")

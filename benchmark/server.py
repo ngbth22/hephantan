@@ -110,23 +110,46 @@ def handle_client(client_sock: socket.socket, addr: tuple[str, int]) -> None:
         print(f"[*] Dong ket noi voi {addr[0]}:{addr[1]}. Da phuc vu {count} luot.")
 
 
-def run_server(host: str = "0.0.0.0", port: int = 5000) -> None:
+def run_server(
+    host: str = "0.0.0.0",
+    port: int = 5000,
+    stop_event: any = None,
+    log_callback: any = None,
+) -> None:
     """Khoi chay TCP Server lang nghe cac luot benchmark."""
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_sock.bind((host, port))
     server_sock.listen(5)
-    print(f"============================================================")
-    print(f"  RECEIVER BENCHMARK SERVER DANG CHAY TAI {host}:{port}")
-    print(f"============================================================")
+    server_sock.settimeout(0.5)  # Timeout de kiem tra stop_event dinh ky
+
+    msg = f"RECEIVER BENCHMARK SERVER DANG CHAY TAI {host}:{port}"
+    print("============================================================")
+    print(f"  {msg}")
+    print("============================================================")
+    if log_callback:
+        log_callback(f"[+] {msg}")
+
     try:
         while True:
-            client_sock, addr = server_sock.accept()
+            if stop_event and stop_event.is_set():
+                break
+            try:
+                client_sock, addr = server_sock.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+
+            if log_callback:
+                log_callback(f"[*] Ket noi benchmark moi tu {addr[0]}:{addr[1]}")
             handle_client(client_sock, addr)
     except KeyboardInterrupt:
         print("\n[*] Nguoi dung yeu cau dung server.")
     finally:
         server_sock.close()
+        if log_callback:
+            log_callback("[*] Server da dung lang nghe.")
 
 
 if __name__ == "__main__":

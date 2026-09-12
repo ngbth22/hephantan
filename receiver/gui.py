@@ -9,6 +9,9 @@ Plaintext sau khi giai ma va Nhat ky truyen nhan.
 
 from __future__ import annotations
 
+import os
+import sys
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -73,6 +76,13 @@ class ReceiverWindow(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.on_stop_server)
         server_layout.addWidget(self.stop_button)
+
+        self.btn_open_benchmark = QPushButton("🚀 Mở Benchmark GUI")
+        self.btn_open_benchmark.setStyleSheet(
+            "background-color: #0284c7; color: white; font-weight: bold; padding: 4px 10px; border-radius: 4px;"
+        )
+        self.btn_open_benchmark.clicked.connect(self._on_open_benchmark_gui)
+        server_layout.addWidget(self.btn_open_benchmark)
 
         root.addWidget(server_group)
 
@@ -259,3 +269,14 @@ class ReceiverWindow(QMainWindow):
             self._server.stop()
             self._server.wait(config.SERVER_STOP_WAIT_MS)
         super().closeEvent(event)
+
+    def _on_open_benchmark_gui(self) -> None:
+        try:
+            bench_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "benchmark")
+            if bench_dir not in sys.path:
+                sys.path.insert(0, bench_dir)
+            import gui as bench_gui
+            self._bench_win = bench_gui.BenchmarkWindow()
+            self._bench_win.show()
+        except Exception as exc:
+            QMessageBox.warning(self, "Lỗi", f"Không thể mở Benchmark GUI: {exc}")

@@ -44,7 +44,8 @@ hephantan/
 │   ├── protocol.py    # đóng gói / giải gói tin JSON (Version 2)
 │   └── config.py      # tham số cấu hình tập trung
 ├── benchmark/         # Hệ thống đo đạc hiệu năng mã hóa & truyền mạng
-│   ├── run_benchmark.py     # Điều phối toàn bộ quy trình benchmark tự động
+│   ├── gui.py               # Giao diện đồ họa PySide6 điều khiển Benchmark
+│   ├── run_benchmark.py     # Điều phối quy trình benchmark tự động (hỗ trợ cờ --gui)
 │   ├── client.py            # Sender benchmark client
 │   ├── server.py            # Receiver benchmark server
 │   ├── common.py            # Giao thức framing nhị phân & cấu hình thực nghiệm
@@ -62,13 +63,15 @@ hephantan/
 │           ├── 06_throughput.png
 │           ├── 07_cpu_usage.png
 │           └── 08_ram_usage.png
-├── tests/             # Bộ kiểm thử tự động toàn diện (27 test cases)
-│   ├── test_ciphers.py      # Unit tests cho Playfair, Caesar, AES, Protocol
-│   ├── test_integration.py  # Integration tests qua TCP Socket
-│   └── test_gui.py          # Kiểm thử giao diện PySide6
+├── tests/             # Bộ kiểm thử tự động toàn diện (33 test cases)
+│   ├── test_ciphers.py       # Unit tests cho Playfair, Caesar, AES, Protocol
+│   ├── test_integration.py   # Integration tests qua TCP Socket
+│   ├── test_gui.py           # Kiểm thử giao diện Sender/Receiver PySide6
+│   └── test_benchmark_gui.py # Kiểm thử giao diện Benchmark GUI PySide6
 ├── docs/              # Tài liệu báo cáo kỹ thuật
 │   ├── bao-cao-trien-khai.md # Báo cáo kỹ thuật triển khai theo ISO/IEC/IEEE 26514:2022
 │   └── bao-cao-benchmark.md  # Báo cáo thực nghiệm hiệu năng & phân tích 8 biểu đồ
+├── benchmark_gui.py   # Trình khởi chạy nhanh Benchmark GUI tại thư mục gốc
 ├── requirements.txt
 └── README.md
 ```
@@ -203,13 +206,30 @@ Hệ thống tích hợp sẵn bộ kịch bản đo đạc hiệu năng mạng 
 - 1 lượt warm-up + 30 lượt đo chính per tổ hợp = 372 lượt thực thi, 360 mẫu phân tích.
 - Thu thập toàn diện: Thời gian mã hóa/giải mã, độ trễ RTT, tổng thời gian, thông lượng (throughput), mức chiếm dụng CPU (%) và bộ nhớ RAM (RSS & Delta).
 
-### Cách 1: Tự động toàn bộ (chạy benchmark nội bộ):
+### Cách 1: Chạy qua Giao diện Đồ họa Benchmark GUI (Khuyến nghị):
+```powershell
+# Chạy trình khởi chạy nhanh tại thư mục gốc
+python benchmark_gui.py
+
+# Hoặc dùng cờ --gui
+python benchmark/run_benchmark.py --gui
+```
+> **Mẹo:** Bạn cũng có thể bấm trực tiếp nút **"🚀 Mở Benchmark GUI"** ngay trên thanh điều khiển của cả **Sender GUI** (`sender/main.py`) và **Receiver GUI** (`receiver/main.py`).
+
+**Các tính năng nổi bật trên Benchmark GUI:**
+- **3 chế độ linh hoạt**: Tự động toàn bộ (Local All-in-One), Sender Client kết nối VM2 từ xa (tích hợp nút Ping Test), hoặc Receiver Server lắng nghe.
+- **Tùy chọn kịch bản**: Tự do chọn/bỏ chọn từng thuật toán (`None`, `Caesar`, `Playfair`, `AES-128-CBC`), kích thước (`1 KB`, `100 KB`, `1 MB`), số lần đo chính và warm-up.
+- **Theo dõi trực tiếp**: Thanh tiến trình `QProgressBar`, 4 thẻ tóm tắt (Metric Cards), bảng dữ liệu thời gian thực cuộn theo từng lượt đo (kèm % CPU, RAM RSS & Delta).
+- **Tab Xem 8 Biểu đồ**: Xem trực tiếp 8 biểu đồ phân tích 300 DPI ngay trong ứng dụng, có nút chuyển ảnh và mở thư mục ảnh gốc.
+- **Tab Bảng Thống kê**: Xem bảng số liệu trung bình/trung vị và nút mở nhanh file CSV / báo cáo.
+
+### Cách 2: Tự động toàn bộ qua Dòng lệnh CLI:
 ```powershell
 python benchmark/run_benchmark.py
 ```
 Lệnh sẽ tự động khởi động Receiver ngầm, chạy toàn bộ 372 lượt đo, xuất CSV, tính toán thống kê và vẽ 8 biểu đồ so sánh vào `benchmark/results/charts/`.
 
-### Cách 2: Chạy phân tán trên 2 máy ảo:
+### Cách 3: Chạy phân tán trên 2 máy ảo qua Dòng lệnh CLI:
 - **Trên VM2 (Receiver)**:
   ```powershell
   python benchmark/server.py --host 0.0.0.0 --port 5000

@@ -111,7 +111,13 @@ if __name__ == "__main__":
     parser.add_argument("--results-dir", default="benchmark/results", help="Thu muc luu ket qua")
     parser.add_argument("--seed", type=int, default=42, help="Seed ngau nhien")
     parser.add_argument("--remote", action="store_true", help="Che do ket noi toi VM2 tu xa (khong bat server local)")
+    parser.add_argument("--gui", action="store_true", help="Mo giao dien do hoa Benchmark GUI")
     args = parser.parse_args()
+
+    if args.gui:
+        import gui
+        gui.main()
+        sys.exit(0)
 
     run_full_pipeline(
         host=args.host,
